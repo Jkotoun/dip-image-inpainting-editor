@@ -303,6 +303,13 @@
     "@types/seedrandom" "^2.4.28"
     seedrandom "^3.0.5"
 
+"@tensorflow/tfjs-backend-webgpu@^4.13.0":
+  version "4.13.0"
+  resolved "https://registry.yarnpkg.com/@tensorflow/tfjs-backend-webgpu/-/tfjs-backend-webgpu-4.13.0.tgz#f233fd7b5dfd32cdea64c3245a38879c5ee99707"
+  integrity sha512-uVvvvx24+5yvZrugNFj4WmEoYUMjmHSQfH6/nXQ/u6npTnO9Imx0oIiinqgIhgPzUEdIE3kjxRbgpHCu8YGbCA==
+  dependencies:
+    "@tensorflow/tfjs-backend-cpu" "4.13.0"
+
 "@tensorflow/tfjs-converter@4.13.0":
   version "4.13.0"
   resolved "https://registry.yarnpkg.com/@tensorflow/tfjs-converter/-/tfjs-converter-4.13.0.tgz#f8ede506ec30948653d6bc08e85bd1d6e8b60f82"

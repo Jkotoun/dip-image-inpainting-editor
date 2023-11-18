@@ -29,6 +29,7 @@
 	},
 	"type": "module",
 	"dependencies": {
-		"@tensorflow/tfjs": "^4.13.0"
+		"@tensorflow/tfjs": "^4.13.0",
+		"@tensorflow/tfjs-backend-webgpu": "^4.13.0"
 	}
 }
