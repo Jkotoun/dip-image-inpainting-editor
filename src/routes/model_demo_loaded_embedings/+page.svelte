@@ -4,7 +4,7 @@
 	import Npyjs from 'npyjs';
 
 	let imageURL = '';
-	let imgWidth = 1024; // Desired width for the canvas
+	let imgWidth = 1000; // Desired width for the canvas
 	let imgHeight = 300; // Default height for the image
 	let originalWidth: number = 0; // Original width of the image
 	let originalHeight: number = 0; // Original height of the image
@@ -24,57 +24,78 @@
 	let model: tf.GraphModel<string | tf.io.IOHandler>;
 	let canvas: any;
 
-	function handleCanvasClick(event: MouseEvent) {
-		// const rect = canvas.getBoundingClientRect();
-		// console.log("test")
-		// console.log(event.offsetX, event.offsetY);
+	function convertCanvasToImageCoords(x: number, y: number) {
+		const imageX = x * (originalWidth / imgWidth);
+		const imageY = y * (originalHeight / imgHeight);
+		return { x: imageX, y: imageY };
+	}
 
-		
+	function handleCanvasClick(event: MouseEvent) {
+
 		//it logs -0 at 0,0 for some reason
 		const x = Math.abs(event.offsetX);
 		const y = Math.abs(event.offsetY);
-		// const x = event.clientX - rect.left;
-		// const y = event.clientY - rect.top;
-		// console.log('Clicked at coordinates (x:', x, ', y:', y, ')');
-		clickedPositions.push({ x, y });
-		
-		drawImageWithMarkers();
 
-		// console.log(clickedPositions);
-		// console.log(imgHeight)
-		// console.log(imgWidth)
-		// console.log(originalHeight)
-		// console.log(originalWidth)
-		console.log(x)
-		console.log(y)
-		console.log(x*(originalWidth/imgWidth))
-		console.log(y*(originalHeight/imgHeight))
+		clickedPositions.push({ x, y });
+		drawImageWithMarkers();
 	}
 	function drawImageWithMarkers() {
-	
-    // Clear canvas
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Draw image
-    const img = new Image();
-    img.src = imageURL;
-    img.onload = () => {
-      ctx.drawImage(img, 0, 0, imgWidth, imgHeight);
-      
-      // Draw markers
-      ctx.fillStyle = 'green';
-      for (const pos of clickedPositions) {
-        ctx.beginPath();
-        ctx.arc(pos.x, pos.y, 5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    };
-  }
+		// Clear canvas
+		const ctx = canvas.getContext('2d');
+		ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+		// Draw image
+		const img = new Image();
+		img.src = imageURL;
+		img.onload = () => {
+			ctx.drawImage(img, 0, 0, imgWidth, imgHeight);
+
+			// Draw markers
+			ctx.fillStyle = 'green';
+			for (const pos of clickedPositions) {
+				ctx.beginPath();
+				ctx.arc(pos.x, pos.y, 5, 0, Math.PI * 2);
+				ctx.fill();
+			}
+		};
+	}
+	//WIP
+	function drawImageWithMask(mask: number[][]) {
+		// Clear canvas
+		const ctx = canvas.getContext('2d');
+		ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+		// Draw image
+		const img = new Image();
+		img.src = imageURL;
+		img.onload = () => {
+			ctx.drawImage(img, 0, 0, imgWidth, imgHeight);
+
+			ctx.fillStyle = 'green';
+			for (const pos of clickedPositions) {
+				ctx.beginPath();
+				ctx.arc(pos.x, pos.y, 5, 0, Math.PI * 2);
+				ctx.fill();
+			}
+
+
+			// Draw mask
+			ctx.fillStyle = 'rgba(89, 156, 255, 0.5)';
+			for (let i = 0; i < mask.length; i++) {
+				for (let j = 0; j < mask[i].length; j++) {
+					if (mask[i][j] > 0) {
+						let aspectWidth = imgWidth/originalWidth;
+						let aspectHeight = imgHeight/originalHeight;
+						ctx.fillRect(j*aspectWidth, i*aspectHeight, 1, 1);
+					}
+				}
+			}
+		};
+	}
+
 	function undoLastClick() {
 		// Remove last clicked position
 		clickedPositions.pop();
-		console.log(clickedPositions);
 
 		// Redraw image with markers
 		drawImageWithMarkers();
@@ -94,8 +115,7 @@
 			}
 		}
 		// Load the image from a static URL
-		imageURL = './demobear.png';
-
+		imageURL = './apples_bowl.jpg';
 		const img = new Image();
 		img.src = imageURL;
 
@@ -112,23 +132,21 @@
 			canvas.height = imgHeight;
 
 			drawImageWithMarkers();
-
 		};
 
 		model = await tf.loadGraphModel('/tfjs_decoder_mobile/model.json');
 
 		//load precomputed embeddings
 		const npy = new Npyjs();
-		const embeddings = await npy.load('image_embedding_tiny.npy');
+		// const embeddings = await npy.load('image_embedding_tiny.npy');
+		const embeddings = await npy.load('image_embedding_apples_bowl_tiny.npy');
+
+		
 		embedding_tensor = tf.tensor(embeddings.data as any, embeddings.shape, 'float32');
 
 		// const response = await fetch(imageURL);
 		// const blob = await response.blob();
 		// const image = await createImageBitmap(blob);
-
-
-
-
 
 		// // Get the original size of the image
 		// const originalWidth = image.width;
@@ -181,21 +199,41 @@
 		// };
 	});
 
-	//TODO WIP
-	async function createInputDict(){
-		const inputPoint = clickedPositions;
+	async function createInputDict() {
+		const inputPoint = clickedPositions.map(({ x, y }) => (convertCanvasToImageCoords(x, y)));
 		const inputLabels = clickedPositions.map(() => 1);
 
-		// Calculate scale factor
-		const longSideLength = 1024;
-		const scale = longSideLength / Math.max(originalWidth, originalHeight);
+		const onnxInputPoints = inputPoint.map(({ x, y }) => [x, y]);
 
-		let newHeight = Math.round(originalHeight * scale);
-		let newWidth = Math.round(originalWidth * scale);
+		//necessary when no box input is provided
+		onnxInputPoints.push([0, 0]);
+		inputLabels.push(-1);
 
-		const realScaleWidth = newWidth / originalWidth;
-		const realScaleHeight = newHeight / originalHeight;
-		const onnxInputPoints = inputPoint.map(({x, y}) => [x * realScaleWidth, y * realScaleHeight]);
+		//FIXED_POINTS//
+		// const inputPoint = [
+		// 	[600, 300],
+		// 	[600, 400],
+		// 	[500, 400],
+		// 	[550, 450],
+		// 	[0, 0]
+		// ];
+		// const inputLabels = [1, 1, 1, 1, -1];
+
+		// // // Calculate scale factor
+		// const longSideLength = 1024;
+		// const scale = longSideLength / Math.max(originalWidth, originalHeight);
+
+		// let newHeight = Math.round(originalHeight * scale);
+		// let newWidth = Math.round(originalWidth * scale);
+
+		// const realScaleWidth = newWidth / originalWidth;
+		// const realScaleHeight = newHeight / originalHeight;
+		// const onnxInputPoints = inputPoint.map(([x, y]) => [x * realScaleWidth, y * realScaleHeight]);
+		
+		//END_FIXED_POINTS//
+
+
+
 
 		// Create input tensors
 		const pointCoordsTensor = tf.tensor(
@@ -221,18 +259,19 @@
 			orig_im_size: origImgSizeTensor
 		};
 		return modelInput;
-	
 	}
-
 
 	async function runModel() {
 		const modelInput = await createInputDict();
+
 		// let data = modelInput.image_embeddings.arraySync();
 		const predictions: any = await model.executeAsync(modelInput);
 		const lastData = await predictions[predictions.length - 1].arraySync();
 
 		let indices = [];
 		const data = lastData[0][0];
+
+		drawImageWithMask(data);
 		for (let i = 0; i < data.length; i++) {
 			for (let j = 0; j < data[i].length; j++) {
 				if (data[i][j] > 0.0) {
@@ -245,21 +284,15 @@
 	}
 </script>
 
-<!-- Your image can be displayed here if needed -->
+
 <div>
 	<button on:click={runModel}>Run Model</button>
 </div>
-<canvas bind:this={canvas} on:click={handleCanvasClick}></canvas>
+<canvas bind:this={canvas} on:click={handleCanvasClick} />
 <button on:click={undoLastClick}>Undo</button>
 
 <br />
 
-<!-- <img src={imageURL} alt="Loaded" /> -->
-
-<!-- {#if modelInput}
-    <p>Model input loaded</p>
-    <button on:click={runModel}>Run Model</button>
-{/if} -->
 
 <style>
 	canvas {
