@@ -1,7 +1,8 @@
 <script>
 </script>
 <h1>Welcome to SvelteKit</h1>
-
+<a href="/editor_mobile">Editor</a>
+<br/>
 <a href="/model_demo_loaded_embedings_huge">Huge</a>
 <br/>
 <a href="/model_demo_loaded_embedings_large">Large</a>
