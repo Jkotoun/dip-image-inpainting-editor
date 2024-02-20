@@ -5,21 +5,25 @@
 	import { Tensor } from 'onnxruntime-web';
 	import { InferenceSession } from 'onnxruntime-web';
 
+	const mobileSAMEncoderPath = '/mobile_sam.encoder.onnx';
+	const mobileSAMDecoderPath = '/tfjs_decoder_mobile/model.json';
+
 	let isLoading = true;
 	let onnxSession: InferenceSession | null = null;
 	let resizedImageBlob: Blob | null = null;
 	let isEmbedderRunning = false;
 	let uploadedImage: HTMLImageElement | null = null;
 	let imageURL: any;
-	let originalWidth: number = 0; // Original width of the image
-	let originalHeight: number = 0; // Original height of the image
-	let aspectRatio: number; // Aspect ratio of the image
 	let resizedImgWidth: number;
 	let resizedImgHeight: number;
-	let clickedPositions: { x: number; y: number }[] = [];
+
+	type pointType = 'positive' | 'negative';
+
+	let clickedPositions: { x: number; y: number; type: pointType }[] = [];
 	let embedding_tensor: tf.Tensor;
 	// let embedding_tensor_loaded: tf.Tensor;
-
+	let ImgResToCanvasSizeRatio: number = 1;
+	// let ImgHeightToCanvasSizeRatio: number = 1;
 	interface modelInputInterface {
 		image_embeddings: tf.Tensor;
 		point_coords: tf.Tensor;
@@ -41,6 +45,7 @@
 		longSideLength: number = 1024
 	): Promise<Blob> {
 		//longerside
+		console.log('current', img.width, img.height);
 		let newWidth, newHeight;
 		if (img.width > img.height) {
 			newWidth = longSideLength;
@@ -82,11 +87,12 @@
 	}
 
 	const handleFileInputChange = async (event: Event) => {
-		isEmbedderRunning = true;
 		const files = (event.target as HTMLInputElement).files;
 		let uploadedImageFile: File = files?.[0] as File;
 		if (!uploadedImageFile) return;
 
+		//clean clicked positions
+		clickedPositions = [];
 		let reader = new FileReader();
 		reader.onload = async (e) => {
 			imageURL = e.target?.result as string;
@@ -94,13 +100,20 @@
 			img.src = imageURL as string;
 			img.onload = async () => {
 				// Calculate aspect ratio
-				aspectRatio = img.width / img.height;
-				originalHeight = img.height;
-				originalWidth = img.width;
-				canvas.width = window.getComputedStyle(canvas).width.replace('px', '');
-				canvas.height = canvas.width / aspectRatio;
+				canvas.width = img.width;
+				canvas.height = img.height;
+				if (canvas.width > canvas.height) {
+					canvas.style.width = '100%';
+					canvas.style.height = 'auto';
+				} else {
+					canvas.style.width = 'auto';
+					canvas.style.height = '70vh';
+				}
+				const canvasElementSize = canvas.getBoundingClientRect();
+				ImgResToCanvasSizeRatio = img.width / canvasElementSize.width;
+
 				console.log(canvas.width, canvas.height);
-				drawImageWithMarkers();
+				drawImageWithMarkers(canvas);
 				const uploadedImgTFTensor = await createImageTFTensor(
 					img,
 					uploadedImageFile,
@@ -117,6 +130,7 @@
 			};
 			uploadedImage = img;
 		};
+		isEmbedderRunning = true;
 		reader.readAsDataURL(uploadedImageFile);
 	};
 
@@ -142,8 +156,8 @@
 	//DECODER MODEL FUNCTIONS
 
 	async function createInputDict() {
-		const inputPoint = clickedPositions.map(({ x, y }) => convertCanvasToImageCoords(x, y));
-		const inputLabels = clickedPositions.map(() => 1);
+		let inputPoint: Array<{x:number, y:number}> = clickedPositions.map(({ x, y }) => coordsToResizedImgScale(x, y));
+		let inputLabels: Array<number> = clickedPositions.map(({ type }) => (type === 'positive') ? 1 : 0);
 
 		const onnxInputPoints = inputPoint.map(({ x, y }) => [x, y]);
 
@@ -158,7 +172,8 @@
 			'float32'
 		);
 		const pointLabelsTensor = tf.tensor([inputLabels], [1, inputLabels.length], 'float32');
-		const origImgSizeTensor = tf.tensor([originalHeight, originalWidth], [2], 'float32');
+		//canvas is set to actual width and height on upload
+		const origImgSizeTensor = tf.tensor([canvas.height, canvas.width], [2], 'float32');
 		const maskInputTensor = tf.tensor(
 			new Float32Array(256 * 256).fill(0),
 			[1, 1, 256, 256],
@@ -186,12 +201,12 @@
 
 		const data = lastData[0][0];
 
-		drawImageWithMask(data);
+		drawImageWithMask(data, canvas);
 	}
 
 	//EDITOR HANDLING FUNCTIONS
 
-	function convertCanvasToImageCoords(x: number, y: number) {
+	function coordsToResizedImgScale(x: number, y: number) {
 		const imageX = (x / canvas.width) * resizedImgWidth;
 		const imageY = (y / canvas.height) * resizedImgHeight;
 		return { x: imageX, y: imageY };
@@ -199,53 +214,53 @@
 
 	function handleCanvasClick(event: MouseEvent) {
 		//it logs -0 at 0,0 for some reason
-		const x = Math.abs(event.offsetX);
-		const y = Math.abs(event.offsetY);
-		clickedPositions.push({ x, y });
-		console.log('original', x, y);
-		console.log('converted', convertCanvasToImageCoords(x, y));
-		drawImageWithMarkers();
+		event.preventDefault();
+		const xScaled = Math.abs(event.offsetX) * ImgResToCanvasSizeRatio;
+		const yScaled = Math.abs(event.offsetY) * ImgResToCanvasSizeRatio;
+
+		//left mouse button for positive, right for negative
+		clickedPositions.push({
+			x: xScaled,
+			y: yScaled,
+			type: event.button === 0 ? 'positive' : 'negative'
+		});
+		drawImageWithMarkers(canvas);
 	}
-	function drawImageWithMarkers() {
+	function drawImageWithMarkers(canvas: HTMLCanvasElement) {
 		// Clear canvas
 		const ctx = canvas.getContext('2d');
-		ctx.clearRect(0, 0, canvas.width, canvas.height);
-		if (uploadedImage) {
-			ctx.drawImage(
-				uploadedImage,
-				0,
-				0,
-				uploadedImage.width,
-				uploadedImage.height,
-				0,
-				0,
-				canvas.width,
-				canvas.height
-			);
-			ctx.fillStyle = 'green';
-			for (const pos of clickedPositions) {
-				ctx.beginPath();
-				ctx.arc(pos.x, pos.y, 5, 0, Math.PI * 2);
-				ctx.fill();
+		if (ctx) {
+			ctx.clearRect(0, 0, canvas.width, canvas.height);
+			if (uploadedImage) {
+				ctx.drawImage(
+					uploadedImage,
+					0,
+					0,
+					uploadedImage.width,
+					uploadedImage.height,
+					0,
+					0,
+					canvas.width,
+					canvas.height
+				);
+				for (const pos of clickedPositions) {
+					ctx.fillStyle = pos.type === 'positive' ? 'green' : 'red';
+					ctx.beginPath();
+					ctx.arc(pos.x, pos.y, 5 * ImgResToCanvasSizeRatio, 0, Math.PI * 2);
+					ctx.fill();
+				}
 			}
 		}
 	}
 
-	function drawImageWithMask(mask: number[][]) {
+	function drawImageWithMask(mask: number[][], canvas: HTMLCanvasElement) {
 		// Clear canvas
+		// const ctx = canvas.getContext('2d');
+		// ctx.clearRect(0, 0, canvas.width, canvas.height);
+		drawImageWithMarkers(canvas);
 		const ctx = canvas.getContext('2d');
-		ctx.clearRect(0, 0, canvas.width, canvas.height);
-
 		// Draw image
-		if (uploadedImage) {
-			ctx.drawImage(uploadedImage, 0, 0, canvas.width, canvas.height);
-
-			ctx.fillStyle = 'green';
-			for (const pos of clickedPositions) {
-				ctx.beginPath();
-				ctx.arc(pos.x, pos.y, 5, 0, Math.PI * 2);
-				ctx.fill();
-			}
+		if (uploadedImage && ctx) {
 
 			// Draw mask
 			ctx.fillStyle = 'rgba(89, 156, 255, 0.5)';
@@ -260,8 +275,6 @@
 			// 		}
 			// 	}
 			// }
-
-
 
 			const widthStep = canvas.width / mask[0].length;
 			const heightStep = canvas.height / mask.length;
@@ -280,13 +293,13 @@
 		clickedPositions.pop();
 
 		// Redraw image with markers
-		drawImageWithMarkers();
+		drawImageWithMarkers(canvas);
 	}
 
 	//ONMOUNT MODELS LOADINGS FUNCTIONS
 	async function loadOnnxModel() {
 		try {
-			onnxSession = await InferenceSession.create('/mobile_sam.encoder.onnx', {
+			onnxSession = await InferenceSession.create(mobileSAMEncoderPath, {
 				executionProviders: ['wasm'],
 				graphOptimizationLevel: 'all'
 			});
@@ -312,7 +325,7 @@
 		}
 
 		await loadOnnxModel();
-		model = await tf.loadGraphModel('/tfjs_decoder_mobile/model.json');
+		model = await tf.loadGraphModel(mobileSAMDecoderPath);
 		isLoading = false;
 
 		//LOADING EMBEDDINGS
@@ -345,20 +358,19 @@
 
 <h1>AI Object remover</h1>
 
-<!-- <button on:click={() => isEmbedderRunning=true}></button> -->
-<input type="file" accept="image/*" on:change={(e) => handleFileInputChange(e)} />
-
-<!-- {#if uploadedImage} -->
 <div>
-	<!-- <button on:click={runModelEncoder}>Run Encoder</button> -->
+	<input type="file" accept="image/*" on:change={(e) => handleFileInputChange(e)} />
 	<button on:click={runModelDecoder} disabled={isEmbedderRunning}>Run Decoder</button>
+	<button on:click={undoLastClick}>Undo</button>
 </div>
 <div id="canvasContainer">
-	<canvas id="editorCanvas" bind:this={canvas} on:click={handleCanvasClick} />
+	<canvas
+		id="editorCanvas"
+		bind:this={canvas}
+		on:click={handleCanvasClick}
+		on:contextmenu={handleCanvasClick}
+	/>
 </div>
-<button on:click={undoLastClick}>Undo</button>
-
-<button on:click={() => console.log()}>Log Canvas Width</button>
 
 <!-- {/if} -->
 
@@ -367,6 +379,7 @@
 		box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
 		margin: 20px;
 		width: 100%;
+		height: auto;
 	}
 	#canvasContainer {
 		width: 60%;
