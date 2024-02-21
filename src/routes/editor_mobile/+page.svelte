@@ -5,40 +5,48 @@
 	import { Tensor } from 'onnxruntime-web';
 	import { InferenceSession } from 'onnxruntime-web';
 
+	//models paths
 	const mobileSAMEncoderPath = '/mobile_sam.encoder.onnx';
 	const mobileSAMDecoderPath = '/tfjs_decoder_mobile/model.json';
 
+	//types definition
+	type pointType = 'positive' | 'negative';
+	// interface modelInputInterface {
+	// 	image_embeddings: tf.Tensor;
+	// 	point_coords: tf.Tensor;
+	// 	point_labels: tf.Tensor;
+	// 	mask_input: tf.Tensor;
+	// 	has_mask_input: tf.Tensor;
+	// 	orig_im_size: tf.Tensor;
+	// }
+
+	//interface interaction globals
 	let isLoading = true;
-	let onnxSession: InferenceSession | null = null;
-	let resizedImageBlob: Blob | null = null;
 	let isEmbedderRunning = false;
-	let uploadedImage: HTMLImageElement | null = null;
-	let imageURL: any;
+
+	//segmentation model constants
+	const longSideLength = 1024;
+	let model: tf.GraphModel<string | tf.io.IOHandler>;
+	let onnxSession: InferenceSession | null = null;
+	let embedding_tensor: tf.Tensor;
+	let resizedImageBlob: Blob | null = null;
 	let resizedImgWidth: number;
 	let resizedImgHeight: number;
 
-	type pointType = 'positive' | 'negative';
-
+	//editor globals - image and canvas interactions
+	let imageURL: any;
+	let uploadedImage: HTMLImageElement | null = null;
 	let clickedPositions: { x: number; y: number; type: pointType }[] = [];
-	let embedding_tensor: tf.Tensor;
-	// let embedding_tensor_loaded: tf.Tensor;
 	let ImgResToCanvasSizeRatio: number = 1;
-	// let ImgHeightToCanvasSizeRatio: number = 1;
-	interface modelInputInterface {
-		image_embeddings: tf.Tensor;
-		point_coords: tf.Tensor;
-		point_labels: tf.Tensor;
-		mask_input: tf.Tensor;
-		has_mask_input: tf.Tensor;
-		orig_im_size: tf.Tensor;
-	}
-	const longSideLength = 1024;
-	// let modelInput: any;
-	let model: tf.GraphModel<string | tf.io.IOHandler>;
 	let canvas: any;
+	let isPainting = false;
 
+	//brush tool
+	let brushSize = 10;
+	let prevMouseX = 0;
+	let prevMouseY = 0;
+	let mouse: any;
 	//EMBEDDING FUNCTIONS
-
 	async function resizeImage(
 		img: HTMLImageElement,
 		imgFile: File,
@@ -156,8 +164,12 @@
 	//DECODER MODEL FUNCTIONS
 
 	async function createInputDict() {
-		let inputPoint: Array<{x:number, y:number}> = clickedPositions.map(({ x, y }) => coordsToResizedImgScale(x, y));
-		let inputLabels: Array<number> = clickedPositions.map(({ type }) => (type === 'positive') ? 1 : 0);
+		let inputPoint: Array<{ x: number; y: number }> = clickedPositions.map(({ x, y }) =>
+			coordsToResizedImgScale(x, y)
+		);
+		let inputLabels: Array<number> = clickedPositions.map(({ type }) =>
+			type === 'positive' ? 1 : 0
+		);
 
 		const onnxInputPoints = inputPoint.map(({ x, y }) => [x, y]);
 
@@ -261,7 +273,6 @@
 		const ctx = canvas.getContext('2d');
 		// Draw image
 		if (uploadedImage && ctx) {
-
 			// Draw mask
 			ctx.fillStyle = 'rgba(89, 156, 255, 0.5)';
 
@@ -294,6 +305,57 @@
 
 		// Redraw image with markers
 		drawImageWithMarkers(canvas);
+	}
+
+	//brush tool
+	function startPainting(event: MouseEvent) {
+		isPainting = true;
+		mouse = getMousePos(canvas, event);
+
+		prevMouseX = mouse.x;
+		prevMouseY = mouse.y;
+		paint(event, canvas);
+	}
+
+	function stopPainting() {
+		isPainting = false;
+	}
+	function paint(event: MouseEvent, canvas: HTMLCanvasElement) {
+		if (isPainting) {
+			const x = event.offsetX;
+			const y = event.offsetY;
+			const xScaled = Math.abs(x) * ImgResToCanvasSizeRatio;
+			const yScaled = Math.abs(y) * ImgResToCanvasSizeRatio;
+			let ctx = canvas.getContext('2d');
+			// Draw on canvas
+			if (ctx) {
+				ctx.strokeStyle = 'rgba(89, 156, 255, 0.5)';
+				// ctx.fillRect((x - (brushSize / 2))*ImgResToCanvasSizeRatio, (y - (brushSize / 2))*ImgResToCanvasSizeRatio, brushSize, brushSize);
+				ctx.beginPath();
+				ctx.lineJoin = 'round';
+				ctx.lineWidth = brushSize;
+				ctx.moveTo(prevMouseX, prevMouseY);
+				ctx.lineTo(xScaled, yScaled);
+				//color
+				ctx.closePath();
+				ctx.stroke();
+				prevMouseX = xScaled;
+    			prevMouseY = yScaled;
+			}
+		}
+	}
+
+	//WIP
+	function getMousePos(canvas: any, evt: any) {
+		evt = evt.originalEvent || window.event || evt;
+		var rect = canvas.getBoundingClientRect();
+
+		if (evt.clientX !== undefined && evt.clientY !== undefined) {
+			return {
+				x: (evt.clientX - rect.left)*ImgResToCanvasSizeRatio,
+				y: (evt.clientY - rect.top)*ImgResToCanvasSizeRatio
+			};
+		}
 	}
 
 	//ONMOUNT MODELS LOADINGS FUNCTIONS
@@ -360,17 +422,26 @@
 
 <div>
 	<input type="file" accept="image/*" on:change={(e) => handleFileInputChange(e)} />
+</div>
+<div style="display: {uploadedImage ? 'block' : 'none'}">
 	<button on:click={runModelDecoder} disabled={isEmbedderRunning}>Run Decoder</button>
 	<button on:click={undoLastClick}>Undo</button>
+	<!-- range slider to set brush size -->
+	<label for="brushSize">Brush size: {brushSize}</label>
+	<input type="range" min="1" max="100" bind:value={brushSize} />
+	<div id="canvasContainer">
+		<canvas
+			id="editorCanvas"
+			bind:this={canvas}
+			on:mousedown={startPainting}
+			on:mouseup={stopPainting}
+			on:mousemove={(e) => paint(e, canvas)}
+		/>
+	</div>
 </div>
-<div id="canvasContainer">
-	<canvas
-		id="editorCanvas"
-		bind:this={canvas}
-		on:click={handleCanvasClick}
-		on:contextmenu={handleCanvasClick}
-	/>
-</div>
+
+<!-- on:click={handleCanvasClick} -->
+<!-- on:contextmenu={handleCanvasClick} -->
 
 <!-- {/if} -->
 
