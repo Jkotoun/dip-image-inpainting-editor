@@ -38,9 +38,10 @@
 	let uploadedImage: HTMLImageElement | null = null;
 	let clickedPositions: { x: number; y: number; type: pointType }[] = [];
 	let ImgResToCanvasSizeRatio: number = 1;
-	let canvas: any;
+	let imageCanvas: any;
+	let maskCanvas: any;
 	let isPainting = false;
-
+	let mask: boolean[][];
 	//brush tool
 	let brushSize = 10;
 	let prevMouseX = 0;
@@ -108,20 +109,29 @@
 			img.src = imageURL as string;
 			img.onload = async () => {
 				// Calculate aspect ratio
-				canvas.width = img.width;
-				canvas.height = img.height;
-				if (canvas.width > canvas.height) {
-					canvas.style.width = '100%';
-					canvas.style.height = 'auto';
+				imageCanvas.width = img.width  
+				// maskCanvas.width = img.width;
+				imageCanvas.height = img.height;
+				// maskCanvas.height = img.height;
+				initializeMask(imageCanvas.width, imageCanvas.height);
+
+				if (imageCanvas.width > imageCanvas.height) {
+					imageCanvas.style.width = '100%';
+					maskCanvas.style.width = '100%'
+
+					imageCanvas.style.height = 'auto';
+					maskCanvas.style.height = 'auto';
 				} else {
-					canvas.style.width = 'auto';
-					canvas.style.height = '70vh';
+					imageCanvas.style.width =  'auto';
+					maskCanvas.style.width = 'auto';
+					imageCanvas.style.height =  '70vh';
+					maskCanvas.style.height =  '70vh';
 				}
-				const canvasElementSize = canvas.getBoundingClientRect();
+				const canvasElementSize = imageCanvas.getBoundingClientRect();
 				ImgResToCanvasSizeRatio = img.width / canvasElementSize.width;
 
-				console.log(canvas.width, canvas.height);
-				drawImageWithMarkers(canvas);
+				console.log(imageCanvas.width, imageCanvas.height);
+				drawImageWithMarkers(imageCanvas);
 				const uploadedImgTFTensor = await createImageTFTensor(
 					img,
 					uploadedImageFile,
@@ -185,7 +195,7 @@
 		);
 		const pointLabelsTensor = tf.tensor([inputLabels], [1, inputLabels.length], 'float32');
 		//canvas is set to actual width and height on upload
-		const origImgSizeTensor = tf.tensor([canvas.height, canvas.width], [2], 'float32');
+		const origImgSizeTensor = tf.tensor([imageCanvas.height, imageCanvas.width], [2], 'float32');
 		const maskInputTensor = tf.tensor(
 			new Float32Array(256 * 256).fill(0),
 			[1, 1, 256, 256],
@@ -213,18 +223,19 @@
 
 		const data = lastData[0][0];
 
-		drawImageWithMask(data, canvas);
+		drawImageWithMask(data, imageCanvas);
 	}
 
 	//EDITOR HANDLING FUNCTIONS
 
 	function coordsToResizedImgScale(x: number, y: number) {
-		const imageX = (x / canvas.width) * resizedImgWidth;
-		const imageY = (y / canvas.height) * resizedImgHeight;
+		const imageX = (x / imageCanvas.width) * resizedImgWidth;
+		const imageY = (y / imageCanvas.height) * resizedImgHeight;
 		return { x: imageX, y: imageY };
 	}
 
 	function handleCanvasClick(event: MouseEvent) {
+		
 		//it logs -0 at 0,0 for some reason
 		event.preventDefault();
 		const xScaled = Math.abs(event.offsetX) * ImgResToCanvasSizeRatio;
@@ -236,7 +247,7 @@
 			y: yScaled,
 			type: event.button === 0 ? 'positive' : 'negative'
 		});
-		drawImageWithMarkers(canvas);
+		drawImageWithMarkers(imageCanvas);
 	}
 	function drawImageWithMarkers(canvas: HTMLCanvasElement) {
 		// Clear canvas
@@ -304,48 +315,47 @@
 		clickedPositions.pop();
 
 		// Redraw image with markers
-		drawImageWithMarkers(canvas);
+		drawImageWithMarkers(imageCanvas);
 	}
 
 	//brush tool
-	function startPainting(event: MouseEvent) {
-		isPainting = true;
-		mouse = getMousePos(canvas, event);
+	// function startPainting(event: MouseEvent) {
+	// 	isPainting = true;
+	// 	mouse = getMousePos(canvas, event);
 
-		prevMouseX = mouse.x;
-		prevMouseY = mouse.y;
-		paint(event, canvas);
-	}
+	// 	prevMouseX = mouse.x;
+	// 	prevMouseY = mouse.y;
+	// 	paint(event, canvas);
+	// }
 
-	function stopPainting() {
-		isPainting = false;
-	}
-	function paint(event: MouseEvent, canvas: HTMLCanvasElement) {
-		if (isPainting) {
-			const x = event.offsetX;
-			const y = event.offsetY;
-			const xScaled = Math.abs(x) * ImgResToCanvasSizeRatio;
-			const yScaled = Math.abs(y) * ImgResToCanvasSizeRatio;
-			let ctx = canvas.getContext('2d');
-			// Draw on canvas
-			if (ctx) {
-				ctx.strokeStyle = 'rgba(89, 156, 255, 0.5)';
-				// ctx.fillRect((x - (brushSize / 2))*ImgResToCanvasSizeRatio, (y - (brushSize / 2))*ImgResToCanvasSizeRatio, brushSize, brushSize);
-				ctx.beginPath();
-				ctx.lineJoin = 'round';
-				ctx.lineWidth = brushSize;
-				ctx.moveTo(prevMouseX, prevMouseY);
-				ctx.lineTo(xScaled, yScaled);
-				//color
-				ctx.closePath();
-				ctx.stroke();
-				prevMouseX = xScaled;
-    			prevMouseY = yScaled;
-			}
-		}
-	}
+	// function stopPainting() {
+	// 	isPainting = false;
+	// }
+	// function paint(event: MouseEvent, canvas: HTMLCanvasElement) {
+	// 	if (isPainting) {
+	// 		const x = event.offsetX;
+	// 		const y = event.offsetY;
+	// 		const xScaled = Math.abs(x) * ImgResToCanvasSizeRatio;
+	// 		const yScaled = Math.abs(y) * ImgResToCanvasSizeRatio;
+	// 		let ctx = canvas.getContext('2d');
+	// 		// Draw on canvas
+	// 		if (ctx) {
+	// 			ctx.strokeStyle = 'rgba(89, 156, 255, 0.5)';
+	// 			// ctx.fillRect((x - (brushSize / 2))*ImgResToCanvasSizeRatio, (y - (brushSize / 2))*ImgResToCanvasSizeRatio, brushSize, brushSize);
+	// 			ctx.beginPath();
+	// 			ctx.lineJoin = 'round';
+	// 			ctx.lineWidth = brushSize;
+	// 			ctx.moveTo(prevMouseX, prevMouseY);
+	// 			ctx.lineTo(xScaled, yScaled);
+	// 			//color
+	// 			ctx.closePath();
+	// 			ctx.stroke();
+	// 			prevMouseX = xScaled;
+	// 			prevMouseY = yScaled;
+	// 		}
+	// 	}
+	// }
 
-	//WIP
 	function getMousePos(canvas: any, evt: any) {
 		evt = evt.originalEvent || window.event || evt;
 		var rect = canvas.getBoundingClientRect();
@@ -358,6 +368,70 @@
 		}
 	}
 
+	//Brush tool mask
+	function startPainting(event: MouseEvent) {
+		isPainting = true;
+		mouse = getMousePos(maskCanvas, event);
+		prevMouseX = mouse.x;
+		prevMouseY = mouse.y;
+		updateMask(prevMouseX, prevMouseY);
+	}
+
+	function paint(event: MouseEvent) {
+		if (isPainting) {
+			const x = event.offsetX*ImgResToCanvasSizeRatio;
+			const y = event.offsetY*ImgResToCanvasSizeRatio;
+			updateMaskWithBrush(x, y, brushSize);
+			drawMask(maskCanvas.getContext('2d'));
+			prevMouseX = x;
+			prevMouseY = y;
+		}
+	}
+
+	function stopPainting() {
+		isPainting = false;
+	}
+
+	function drawMask(ctx: CanvasRenderingContext2D) {
+		ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+		ctx.fillStyle = 'rgba(89, 156, 255, 0.5)';
+		for (let y = 0; y < mask.length; y++) {
+			for (let x = 0; x < mask[y].length; x++) {
+				if (mask[y][x]) {
+					ctx.fillRect(x, y, 1, 1);
+				}
+			}
+		}
+	}
+
+	function initializeMask(canvasWidth: number, canvasHeight: number) {
+		mask = new Array(canvasHeight);
+		for (let i = 0; i < canvasHeight; i++) {
+			mask[i] = new Array(canvasWidth).fill(false);
+		}
+	}
+
+	// Function to update the mask array
+	function updateMask(x: number, y: number) {
+		if (x >= 0 && x < mask[0].length && y >= 0 && y < mask.length) {
+			mask[Math.round(y)][Math.round(x)] = true;
+		}
+	}
+
+	function updateMaskWithBrush(x: number, y: number, brushSize: number) {
+    const radius = Math.floor((brushSize / 2)*ImgResToCanvasSizeRatio);
+    for (let offsetY = -radius; offsetY <= radius; offsetY++) {
+        for (let offsetX = -radius; offsetX <= radius; offsetX++) {
+            const distanceSquared = offsetX * offsetX + offsetY * offsetY;
+            if (distanceSquared <= radius * radius) {
+                const pixelX = x + offsetX;
+                const pixelY = y + offsetY;
+                updateMask(pixelX, pixelY);
+            }
+        }
+    }
+}
 	//ONMOUNT MODELS LOADINGS FUNCTIONS
 	async function loadOnnxModel() {
 		try {
@@ -429,30 +503,40 @@
 	<!-- range slider to set brush size -->
 	<label for="brushSize">Brush size: {brushSize}</label>
 	<input type="range" min="1" max="100" bind:value={brushSize} />
-	<div id="canvasContainer">
+	<div class="canvases">
 		<canvas
-			id="editorCanvas"
-			bind:this={canvas}
-			on:mousedown={startPainting}
-			on:mouseup={stopPainting}
-			on:mousemove={(e) => paint(e, canvas)}
+		id="imageCanvas"
+		bind:this={imageCanvas}
+	
+		/>
+		<canvas
+		id="maskCanvas"
+		bind:this={maskCanvas}
+		on:mousedown={startPainting}
+		on:mouseup={stopPainting}
+		on:mousemove={paint}
 		/>
 	</div>
 </div>
 
+<!-- TODO AI tool select -->
 <!-- on:click={handleCanvasClick} -->
 <!-- on:contextmenu={handleCanvasClick} -->
 
-<!-- {/if} -->
-
 <style>
-	canvas {
-		box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
-		margin: 20px;
-		width: 100%;
-		height: auto;
-	}
-	#canvasContainer {
+	.canvases {
 		width: 60%;
+		position: relative;
+		
 	}
+	.canvases canvas{
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		display:block;
+		box-shadow: 0 0 10px 0 rgba(0, 0, 0, 0.2);
+	}
+
+
 </style>
