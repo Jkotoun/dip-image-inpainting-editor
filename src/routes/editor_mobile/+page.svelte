@@ -42,12 +42,15 @@
 	let maskCanvas: any;
 	let isPainting = false;
 	// let mask: boolean[][];
-	let masksStatesStack: any[] = []
+	let masksStatesStack: any[] = [];
+
 	//brush tool
 	let brushSize = 10;
 	let prevMouseX = 0;
 	let prevMouseY = 0;
 	let mouse: any;
+	let selectedBrushMode: 'brush' | 'eraser' = 'brush'; // Initial selected option
+
 	//EMBEDDING FUNCTIONS
 	async function resizeImage(
 		img: HTMLImageElement,
@@ -110,7 +113,7 @@
 			img.src = imageURL as string;
 			img.onload = async () => {
 				// Calculate aspect ratio
-				imageCanvas.width = img.width  
+				imageCanvas.width = img.width;
 				maskCanvas.width = img.width;
 				imageCanvas.height = img.height;
 				maskCanvas.height = img.height;
@@ -120,8 +123,8 @@
 					imageCanvas.style.width = maskCanvas.style.width = '100%';
 					imageCanvas.style.height = maskCanvas.style.height = 'auto';
 				} else {
-					imageCanvas.style.width =  maskCanvas.style.width = 'auto';
-					imageCanvas.style.height =  maskCanvas.style.height =  '70vh';
+					imageCanvas.style.width = maskCanvas.style.width = 'auto';
+					imageCanvas.style.height = maskCanvas.style.height = '70vh';
 				}
 				const canvasElementSize = imageCanvas.getBoundingClientRect();
 				ImgResToCanvasSizeRatio = img.width / canvasElementSize.width;
@@ -230,7 +233,6 @@
 	}
 
 	function handleCanvasClick(event: MouseEvent) {
-		
 		//it logs -0 at 0,0 for some reason
 		event.preventDefault();
 		const xScaled = Math.abs(event.offsetX) * ImgResToCanvasSizeRatio;
@@ -280,7 +282,7 @@
 		// Draw image
 		if (uploadedImage && ctx) {
 			// Draw mask
-			ctx.fillStyle = 'rgba(89, 156, 255, 0.5)';
+			ctx.fillStyle = 'rgba(89, 156, 255, 1)';
 
 			//iterate through canvas pixels and quant to mask values
 			// let widthStep = canvas.width / resizedImgWidth;
@@ -304,14 +306,16 @@
 			}
 		}
 	}
-
 	function undoLastClick() {
 		// Remove last clicked position
 		// clickedPositions.pop();
-		masksStatesStack.pop();
-		drawMask(maskCanvas,  masksStatesStack[masksStatesStack.length - 1]);
-
-
+		masksStatesStack = masksStatesStack.slice(0, -1);
+		if(masksStatesStack.length > 0){
+			drawMask(maskCanvas, masksStatesStack[masksStatesStack.length - 1]);
+		}
+		else{
+			clearCanvas(maskCanvas)
+		}
 		// Redraw image with markers
 		drawImageWithMarkers(imageCanvas);
 	}
@@ -329,11 +333,9 @@
 	function stopPainting() {
 		isPainting = false;
 		let maskArray = createMaskArray(maskCanvas);
-		masksStatesStack.push(maskArray);
-		// console.log(maskArray)
-		drawImageWithMarkers(imageCanvas);
-		drawMask(maskCanvas, masksStatesStack[masksStatesStack.length - 1]);
-		
+		masksStatesStack = [...masksStatesStack, maskArray];
+		// drawImageWithMarkers(imageCanvas);
+		// drawMask(maskCanvas, masksStatesStack[masksStatesStack.length - 1]);
 	}
 	function paint(event: MouseEvent, canvas: HTMLCanvasElement) {
 		if (isPainting) {
@@ -341,14 +343,15 @@
 			const y = event.offsetY;
 			const xScaled = Math.abs(x) * ImgResToCanvasSizeRatio;
 			const yScaled = Math.abs(y) * ImgResToCanvasSizeRatio;
-			let ctx = canvas.getContext('2d');
+			let brushSizeScaled = brushSize * ImgResToCanvasSizeRatio;
+			let ctx = canvas.getContext('2d', {willReadFrequently: true});
 			// Draw on canvas
 			if (ctx) {
-				ctx.strokeStyle = 'rgba(89, 156, 255, 0.5)';
-				// ctx.fillRect((x - (brushSize / 2))*ImgResToCanvasSizeRatio, (y - (brushSize / 2))*ImgResToCanvasSizeRatio, brushSize, brushSize);
+				ctx.strokeStyle = 'rgba(89, 156, 255, 1)';
 				ctx.beginPath();
 				ctx.lineJoin = 'round';
-				ctx.lineWidth = brushSize;
+				ctx.lineCap = 'round';
+				ctx.lineWidth = brushSizeScaled;
 				ctx.moveTo(prevMouseX, prevMouseY);
 				ctx.lineTo(xScaled, yScaled);
 				//color
@@ -366,31 +369,39 @@
 
 		if (evt.clientX !== undefined && evt.clientY !== undefined) {
 			return {
-				x: (evt.clientX - rect.left)*ImgResToCanvasSizeRatio,
-				y: (evt.clientY - rect.top)*ImgResToCanvasSizeRatio
+				x: (evt.clientX - rect.left) * ImgResToCanvasSizeRatio,
+				y: (evt.clientY - rect.top) * ImgResToCanvasSizeRatio
 			};
 		}
 	}
 
 	function createMaskArray(maskCanvas: HTMLCanvasElement) {
-    const ctx = maskCanvas.getContext('2d');
-	if(ctx){
-		const imageData = ctx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
-		const maskArray: any = [];
-		for (let y = 0; y < maskCanvas.height; y++) {
-			const row = [];
-			for (let x = 0; x < maskCanvas.width; x++) {
-				const index = (y * maskCanvas.width + x) * 4; //RGBA
-				const alpha = imageData.data[index + 3]; // Alpha value indicates if the pixel is drawn to
-				row.push(alpha !== 0); 
+		const ctx = maskCanvas.getContext('2d', {willReadFrequently: true});
+		if (ctx) {
+			const imageData = ctx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
+			const maskArray: any = [];
+			for (let y = 0; y < maskCanvas.height; y++) {
+				const row = [];
+				for (let x = 0; x < maskCanvas.width; x++) {
+					const index = (y * maskCanvas.width + x) * 4; //RGBA
+					const alpha = imageData.data[index + 3]; // Alpha value indicates if the pixel is drawn to
+					row.push(alpha > 128); //mark as masked pixels with alpha > 128 (minimizes aliasing better than >0)
+				}
+				maskArray.push(row);
 			}
-			maskArray.push(row);
+			return maskArray;
 		}
-	
-		return maskArray;
 	}
-}
 
+	function handleBrushModeChange(event: any, maskCanvas: HTMLCanvasElement) {
+		selectedBrushMode = event.target.value;
+		// Get the canvas element
+		const context = maskCanvas.getContext('2d');
+		if (!context) return;
+
+		context.globalCompositeOperation =
+			selectedBrushMode === 'brush' ? 'source-over' : 'destination-out';
+	}
 
 	// //Brush tool mask
 	// function startPainting(event: MouseEvent) {
@@ -419,10 +430,11 @@
 
 	function drawMask(maskCanvas: HTMLCanvasElement, maskArray: any) {
 		const maskCanvasctx = maskCanvas.getContext('2d');
-		if(maskCanvasctx){
-
-			maskCanvasctx.clearRect(0, 0, maskCanvasctx.canvas.width, maskCanvasctx.canvas.height);
-			maskCanvasctx.fillStyle = 'rgba(89, 156, 255, 0.5)';
+		if (maskCanvasctx) {
+			const prevMode = maskCanvasctx.globalCompositeOperation;
+			maskCanvasctx.globalCompositeOperation = 'source-over';
+			clearCanvas(maskCanvas)
+			maskCanvasctx.fillStyle = 'rgba(89, 156, 255, 1)';
 
 			for (let y = 0; y < maskArray.length; y++) {
 				for (let x = 0; x < maskArray[y].length; x++) {
@@ -431,6 +443,14 @@
 					}
 				}
 			}
+			maskCanvasctx.globalCompositeOperation = prevMode;
+		}
+	}
+
+	function clearCanvas(canvas: HTMLCanvasElement) {
+		const ctx = canvas.getContext('2d');
+		if (ctx) {
+			ctx.clearRect(0, 0, canvas.width, canvas.height);
 		}
 	}
 
@@ -449,18 +469,18 @@
 	// }
 
 	// function updateMaskWithBrush(x: number, y: number, brushSize: number) {
-    // const radius = Math.floor((brushSize / 2)*ImgResToCanvasSizeRatio);
-    // for (let offsetY = -radius; offsetY <= radius; offsetY++) {
-    //     for (let offsetX = -radius; offsetX <= radius; offsetX++) {
-    //         const distanceSquared = offsetX * offsetX + offsetY * offsetY;
-    //         if (distanceSquared <= radius * radius) {
-    //             const pixelX = x + offsetX;
-    //             const pixelY = y + offsetY;
-    //             updateMask(pixelX, pixelY);
-    //         }
-    //     }
-    // }
-// }
+	// const radius = Math.floor((brushSize / 2)*ImgResToCanvasSizeRatio);
+	// for (let offsetY = -radius; offsetY <= radius; offsetY++) {
+	//     for (let offsetX = -radius; offsetX <= radius; offsetX++) {
+	//         const distanceSquared = offsetX * offsetX + offsetY * offsetY;
+	//         if (distanceSquared <= radius * radius) {
+	//             const pixelX = x + offsetX;
+	//             const pixelY = y + offsetY;
+	//             updateMask(pixelX, pixelY);
+	//         }
+	//     }
+	// }
+	// }
 	//ONMOUNT MODELS LOADINGS FUNCTIONS
 	async function loadOnnxModel() {
 		try {
@@ -528,22 +548,40 @@
 </div>
 <div style="display: {uploadedImage ? 'block' : 'none'}">
 	<button on:click={runModelDecoder} disabled={isEmbedderRunning}>Run Decoder</button>
-	<button on:click={undoLastClick}>Undo</button>
+	<button on:click={undoLastClick} disabled={masksStatesStack.length===0}>Undo</button>
 	<!-- range slider to set brush size -->
 	<label for="brushSize">Brush size: {brushSize}</label>
-	<input type="range" min="1" max="100" bind:value={brushSize} />
+	<input type="range" min="1" max="500" bind:value={brushSize} />
+	<!-- <button on:click={() => switchToBrushDrawingMode(maskCanvas)}>Brush</button>
+	<button on:click={() => switchToBrushErasingMode(maskCanvas)}>Eraser</button> -->
+	<div>
+		<label>
+			<input
+				type="radio"
+				bind:group={selectedBrushMode}
+				value="brush"
+				on:change={(e) => handleBrushModeChange(e, maskCanvas)}
+			/>
+			Brush
+		</label>
+		<label>
+			<input
+				type="radio"
+				bind:group={selectedBrushMode}
+				value="eraser"
+				on:change={(e) => handleBrushModeChange(e, maskCanvas)}
+			/>
+			Eraser
+		</label>
+	</div>
 	<div class="canvases">
+		<canvas id="imageCanvas" bind:this={imageCanvas} />
 		<canvas
-		id="imageCanvas"
-		bind:this={imageCanvas}
-	
-		/>
-		<canvas
-		id="maskCanvas"
-		bind:this={maskCanvas}
-		on:mousedown={startPainting}
-		on:mouseup={stopPainting}
-		on:mousemove={(event) => paint(event, maskCanvas)}
+			id="maskCanvas"
+			bind:this={maskCanvas}
+			on:mousedown={startPainting}
+			on:mouseup={stopPainting}
+			on:mousemove={(event) => paint(event, maskCanvas)}
 		/>
 	</div>
 </div>
@@ -556,16 +594,16 @@
 	.canvases {
 		width: 60%;
 		position: relative;
-		
 	}
-	.canvases canvas{
+	.canvases canvas {
 		position: absolute;
 		inset: 0;
 		width: 100%;
 		height: 100%;
-		display:block;
+		display: block;
 		box-shadow: 0 0 10px 0 rgba(0, 0, 0, 0.2);
 	}
-
-
+	.canvases #maskCanvas {
+		opacity: 0.5;
+	}
 </style>
