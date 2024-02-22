@@ -42,7 +42,8 @@
 	let maskCanvas: any;
 	let isPainting = false;
 	// let mask: boolean[][];
-	let masksStatesStack: any[] = [];
+	let masksStatesHistoryStack: any[] = [];
+	let masksStatesUndoedStack: any[] = [];
 
 	//brush tool
 	let brushSize = 10;
@@ -306,18 +307,30 @@
 			}
 		}
 	}
-	function undoLastClick() {
-		// Remove last clicked position
-		// clickedPositions.pop();
-		masksStatesStack = masksStatesStack.slice(0, -1);
-		if(masksStatesStack.length > 0){
-			drawMask(maskCanvas, masksStatesStack[masksStatesStack.length - 1]);
+	function undoLastAction() {
+		//check before removing, if there is any 
+		if(masksStatesHistoryStack.length > 0){
+			masksStatesUndoedStack = [...masksStatesUndoedStack, masksStatesHistoryStack[masksStatesHistoryStack.length - 1]];
+			masksStatesHistoryStack = masksStatesHistoryStack.slice(0, -1);
+		}
+		// after remove, check if there is state to draw to canvas
+		if(masksStatesHistoryStack.length > 0){
+			drawMask(maskCanvas, masksStatesHistoryStack[masksStatesHistoryStack.length - 1]);
 		}
 		else{
 			clearCanvas(maskCanvas)
 		}
 		// Redraw image with markers
 		drawImageWithMarkers(imageCanvas);
+	}
+
+	function redoLastAction(){
+		if(masksStatesUndoedStack.length > 0){
+			masksStatesHistoryStack = [...masksStatesHistoryStack, masksStatesUndoedStack[masksStatesUndoedStack.length - 1]];
+			masksStatesUndoedStack = masksStatesUndoedStack.slice(0, -1);
+			drawMask(maskCanvas, masksStatesHistoryStack[masksStatesHistoryStack.length - 1]);
+			drawImageWithMarkers(imageCanvas);
+		}
 	}
 
 	// brush tool
@@ -333,7 +346,8 @@
 	function stopPainting() {
 		isPainting = false;
 		let maskArray = createMaskArray(maskCanvas);
-		masksStatesStack = [...masksStatesStack, maskArray];
+		masksStatesHistoryStack = [...masksStatesHistoryStack, maskArray];
+		masksStatesUndoedStack = [];
 		// drawImageWithMarkers(imageCanvas);
 		// drawMask(maskCanvas, masksStatesStack[masksStatesStack.length - 1]);
 	}
@@ -548,7 +562,8 @@
 </div>
 <div style="display: {uploadedImage ? 'block' : 'none'}">
 	<button on:click={runModelDecoder} disabled={isEmbedderRunning}>Run Decoder</button>
-	<button on:click={undoLastClick} disabled={masksStatesStack.length===0}>Undo</button>
+	<button on:click={undoLastAction} disabled={masksStatesHistoryStack.length===0}>Undo</button>
+	<button on:click={redoLastAction} disabled={masksStatesUndoedStack.length===0}>Redo</button>
 	<!-- range slider to set brush size -->
 	<label for="brushSize">Brush size: {brushSize}</label>
 	<input type="range" min="1" max="500" bind:value={brushSize} />
