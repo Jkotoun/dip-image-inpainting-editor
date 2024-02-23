@@ -44,12 +44,15 @@
 	// let mask: boolean[][];
 	let masksStatesHistoryStack: any[] = [];
 	let masksStatesUndoedStack: any[] = [];
+	let currentCursor: 'default' | 'brush' | 'eraser' = 'default';
 
 	//brush tool
 	let brushSize = 10;
 	let prevMouseX = 0;
 	let prevMouseY = 0;
-	let mouse: any;
+	let currentCanvasRelativeX = 0;
+	let currentCanvasRelativeY = 0;
+	// let mouse: any;
 	let selectedBrushMode: 'brush' | 'eraser' = 'brush'; // Initial selected option
 
 	//EMBEDDING FUNCTIONS
@@ -308,25 +311,30 @@
 		}
 	}
 	function undoLastAction() {
-		//check before removing, if there is any 
-		if(masksStatesHistoryStack.length > 0){
-			masksStatesUndoedStack = [...masksStatesUndoedStack, masksStatesHistoryStack[masksStatesHistoryStack.length - 1]];
+		//check before removing, if there is any
+		if (masksStatesHistoryStack.length > 0) {
+			masksStatesUndoedStack = [
+				...masksStatesUndoedStack,
+				masksStatesHistoryStack[masksStatesHistoryStack.length - 1]
+			];
 			masksStatesHistoryStack = masksStatesHistoryStack.slice(0, -1);
 		}
 		// after remove, check if there is state to draw to canvas
-		if(masksStatesHistoryStack.length > 0){
+		if (masksStatesHistoryStack.length > 0) {
 			drawMask(maskCanvas, masksStatesHistoryStack[masksStatesHistoryStack.length - 1]);
-		}
-		else{
-			clearCanvas(maskCanvas)
+		} else {
+			clearCanvas(maskCanvas);
 		}
 		// Redraw image with markers
 		drawImageWithMarkers(imageCanvas);
 	}
 
-	function redoLastAction(){
-		if(masksStatesUndoedStack.length > 0){
-			masksStatesHistoryStack = [...masksStatesHistoryStack, masksStatesUndoedStack[masksStatesUndoedStack.length - 1]];
+	function redoLastAction() {
+		if (masksStatesUndoedStack.length > 0) {
+			masksStatesHistoryStack = [
+				...masksStatesHistoryStack,
+				masksStatesUndoedStack[masksStatesUndoedStack.length - 1]
+			];
 			masksStatesUndoedStack = masksStatesUndoedStack.slice(0, -1);
 			drawMask(maskCanvas, masksStatesHistoryStack[masksStatesHistoryStack.length - 1]);
 			drawImageWithMarkers(imageCanvas);
@@ -336,11 +344,9 @@
 	// brush tool
 	function startPainting(event: MouseEvent) {
 		isPainting = true;
-		mouse = getMousePos(maskCanvas, event);
-
-		prevMouseX = mouse.x;
-		prevMouseY = mouse.y;
-		paint(event, maskCanvas);
+		prevMouseX = event.offsetX * ImgResToCanvasSizeRatio;
+		prevMouseY = event.offsetY * ImgResToCanvasSizeRatio;
+		handleEditorMouseMove(event, maskCanvas);
 	}
 
 	function stopPainting() {
@@ -351,46 +357,61 @@
 		// drawImageWithMarkers(imageCanvas);
 		// drawMask(maskCanvas, masksStatesStack[masksStatesStack.length - 1]);
 	}
-	function paint(event: MouseEvent, canvas: HTMLCanvasElement) {
+	function handleEditorMouseMove(event: MouseEvent, canvas: HTMLCanvasElement) {
+		const x = event.offsetX * ImgResToCanvasSizeRatio;
+		const y = event.offsetY * ImgResToCanvasSizeRatio;
+
+		currentCanvasRelativeX = event.offsetX;
+		currentCanvasRelativeY = event.offsetY;
 		if (isPainting) {
-			const x = event.offsetX;
-			const y = event.offsetY;
-			const xScaled = Math.abs(x) * ImgResToCanvasSizeRatio;
-			const yScaled = Math.abs(y) * ImgResToCanvasSizeRatio;
-			let brushSizeScaled = brushSize * ImgResToCanvasSizeRatio;
-			let ctx = canvas.getContext('2d', {willReadFrequently: true});
-			// Draw on canvas
-			if (ctx) {
+			paintOnCanvas(x, y, brushSize, canvas);
+		} 
+	}
+
+	function showBrushCursor(event: MouseEvent) {
+		currentCursor = selectedBrushMode === 'brush' ? 'brush' : 'eraser';
+	}
+
+	function hideBrushCursor(event: MouseEvent) {
+		currentCursor = 'default';
+	}
+
+	function paintOnCanvas(x: number, y: number, brushSize: number, canvas: HTMLCanvasElement) {
+		// const yScaled = Math.abs(y) * ImgResToCanvasSizeRatio;
+		//scale to website pixels from canvas res
+		let brushSizeScaled = brushSize * ImgResToCanvasSizeRatio;
+		let ctx = canvas.getContext('2d', { willReadFrequently: true });
+		console.log("painting")
+		console.log(prevMouseX, prevMouseY)
+		console.log(x, y)
+		// Draw on canvas
+		if (ctx) {
+			if(prevMouseX === x && prevMouseY === y){
+				ctx.beginPath();
+				ctx.arc(x, y, brushSizeScaled / 2, 0, 2 * Math.PI);
+				ctx.fillStyle = 'rgba(89, 156, 255, 1)';
+				ctx.fill();
+			}
+			else{
 				ctx.strokeStyle = 'rgba(89, 156, 255, 1)';
 				ctx.beginPath();
 				ctx.lineJoin = 'round';
 				ctx.lineCap = 'round';
 				ctx.lineWidth = brushSizeScaled;
 				ctx.moveTo(prevMouseX, prevMouseY);
-				ctx.lineTo(xScaled, yScaled);
+				ctx.lineTo(x, y);
 				//color
 				ctx.closePath();
 				ctx.stroke();
-				prevMouseX = xScaled;
-				prevMouseY = yScaled;
 			}
-		}
-	}
 
-	function getMousePos(canvas: any, evt: any) {
-		evt = evt.originalEvent || window.event || evt;
-		var rect = canvas.getBoundingClientRect();
-
-		if (evt.clientX !== undefined && evt.clientY !== undefined) {
-			return {
-				x: (evt.clientX - rect.left) * ImgResToCanvasSizeRatio,
-				y: (evt.clientY - rect.top) * ImgResToCanvasSizeRatio
-			};
+			prevMouseX = x;
+			prevMouseY = y;
 		}
 	}
 
 	function createMaskArray(maskCanvas: HTMLCanvasElement) {
-		const ctx = maskCanvas.getContext('2d', {willReadFrequently: true});
+		const ctx = maskCanvas.getContext('2d', { willReadFrequently: true });
 		if (ctx) {
 			const imageData = ctx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
 			const maskArray: any = [];
@@ -416,6 +437,8 @@
 		context.globalCompositeOperation =
 			selectedBrushMode === 'brush' ? 'source-over' : 'destination-out';
 	}
+
+
 
 	// //Brush tool mask
 	// function startPainting(event: MouseEvent) {
@@ -447,7 +470,7 @@
 		if (maskCanvasctx) {
 			const prevMode = maskCanvasctx.globalCompositeOperation;
 			maskCanvasctx.globalCompositeOperation = 'source-over';
-			clearCanvas(maskCanvas)
+			clearCanvas(maskCanvas);
 			maskCanvasctx.fillStyle = 'rgba(89, 156, 255, 1)';
 
 			for (let y = 0; y < maskArray.length; y++) {
@@ -562,8 +585,8 @@
 </div>
 <div style="display: {uploadedImage ? 'block' : 'none'}">
 	<button on:click={runModelDecoder} disabled={isEmbedderRunning}>Run Decoder</button>
-	<button on:click={undoLastAction} disabled={masksStatesHistoryStack.length===0}>Undo</button>
-	<button on:click={redoLastAction} disabled={masksStatesUndoedStack.length===0}>Redo</button>
+	<button on:click={undoLastAction} disabled={masksStatesHistoryStack.length === 0}>Undo</button>
+	<button on:click={redoLastAction} disabled={masksStatesUndoedStack.length === 0}>Redo</button>
 	<!-- range slider to set brush size -->
 	<label for="brushSize">Brush size: {brushSize}</label>
 	<input type="range" min="1" max="500" bind:value={brushSize} />
@@ -589,14 +612,30 @@
 			Eraser
 		</label>
 	</div>
-	<div class="canvases">
+	<div
+		class="canvases"
+		on:mouseenter={showBrushCursor}
+		on:mouseleave={hideBrushCursor}
+		style="cursor: {currentCursor === 'default' ? 'auto' : 'none'}"
+		role="group"
+		>
+		<div id="brushToolCursor" style="
+			display: {currentCursor === 'default' ? "none" : "block"};
+			width: {brushSize}px;
+			height: {brushSize}px;
+			left: {currentCanvasRelativeX}px;
+			top: {currentCanvasRelativeY}px;
+			background-color: {selectedBrushMode === "brush" ? "#599cff" : "#f5f5f5"};
+			opacity: {isPainting ? 0.5 : 0.3};
+
+		" />
 		<canvas id="imageCanvas" bind:this={imageCanvas} />
 		<canvas
 			id="maskCanvas"
 			bind:this={maskCanvas}
 			on:mousedown={startPainting}
 			on:mouseup={stopPainting}
-			on:mousemove={(event) => paint(event, maskCanvas)}
+			on:mousemove={(event) => handleEditorMouseMove(event, maskCanvas)}
 		/>
 	</div>
 </div>
@@ -620,5 +659,13 @@
 	}
 	.canvases #maskCanvas {
 		opacity: 0.5;
+	}
+	#brushToolCursor {
+		position: absolute;
+		overflow: hidden;
+		border-radius: 50%;
+		pointer-events: none;
+		z-index: 100;
+		transform: translate(-50%, -50%);
 	}
 </style>
