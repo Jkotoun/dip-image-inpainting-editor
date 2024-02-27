@@ -8,7 +8,10 @@
 	//models paths
 	const mobileSAMEncoderPath = '/mobile_sam.encoder.onnx';
 	const mobileSAMDecoderPath = '/tfjs_decoder_mobile/model.json';
+	const mobile_inpainting_GAN = '/migan_bilinear_512_f32.onnx';
 
+
+	
 	//types definition
 	type pointType = 'positive' | 'negative';
 	// interface modelInputInterface {
@@ -21,6 +24,12 @@
 	// }
 
 	//interface interaction globals
+	interface loadedImgRGBData {
+		rgbArray: Uint8Array;
+		width: number;
+		height: number;
+	}
+
 	let isLoading = true;
 	let isEmbedderRunning = false;
 
@@ -28,13 +37,17 @@
 	const longSideLength = 1024;
 	let model: tf.GraphModel<string | tf.io.IOHandler>;
 	let onnxSession: InferenceSession | null = null;
+	let onnxSessionMIGAN: InferenceSession | null = null;
 	let embedding_tensor: tf.Tensor;
-	let resizedImageBlob: Blob | null = null;
 	let resizedImgWidth: number;
 	let resizedImgHeight: number;
+	// let loadedImgRGB: loadedImgRGBData;
+
+	//inpaint model constants
+	let inpaintedImgCanvas: any;
 
 	//editor globals - image and canvas interactions
-	let imageURL: any;
+	let imagebase64URL: any;
 	let uploadedImage: HTMLImageElement | null = null;
 	let clickedPositions: { x: number; y: number; type: pointType }[] = [];
 	let ImgResToCanvasSizeRatio: number = 1;
@@ -56,20 +69,18 @@
 	let selectedBrushMode: 'brush' | 'eraser' = 'brush'; // Initial selected option
 
 	//EMBEDDING FUNCTIONS
-	async function resizeImage(
+	function getResizedImgRGBArray(
 		img: HTMLImageElement,
-		imgFile: File,
 		longSideLength: number = 1024
-	): Promise<Blob> {
+	): loadedImgRGBData {
 		//longerside
-		console.log('current', img.width, img.height);
 		let newWidth, newHeight;
 		if (img.width > img.height) {
 			newWidth = longSideLength;
-			newHeight = longSideLength * (img.height / img.width);
+			newHeight = Math.round(longSideLength * (img.height / img.width));
 		} else {
 			newHeight = longSideLength;
-			newWidth = longSideLength * (img.width / img.height);
+			newWidth = Math.round(longSideLength * (img.width / img.height));
 		}
 
 		let tempCanvas = document.createElement('canvas');
@@ -80,28 +91,50 @@
 		resizedImgWidth = newWidth;
 		resizedImgHeight = newHeight;
 
-		console.log('new dims', newWidth, newHeight);
-		return new Promise((resolve, reject) => {
-			tempCanvas.toBlob((blob) => {
+		return canvasToRGBArray(tempCanvas);
+	}
+
+	function canvasToRGBArray(canvas: HTMLCanvasElement): loadedImgRGBData {
+		let canvasContext = canvas.getContext('2d');
+		let imgData = canvasContext?.getImageData(0, 0, canvas.width, canvas.height);
+		let pixels = imgData?.data;
+		//create rgb array
+		let rgbArray = new Uint8Array(canvas.width * canvas.height * 3);
+		for (let i = 0; i < canvas.width * canvas.height; i++) {
+			rgbArray[i * 3] = pixels![i * 4];
+			rgbArray[i * 3 + 1] = pixels![i * 4 + 1];
+			rgbArray[i * 3 + 2] = pixels![i * 4 + 2];
+		}
+		return { rgbArray, width: canvas.width, height: canvas.height } as loadedImgRGBData;
+	}
+
+	function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
+		return new Promise((resolve) => {
+			canvas.toBlob((blob) => {
 				if (!blob) {
-					reject(new Error('Failed to resize image.'));
-					return;
+					throw new Error('Failed to convert canvas to blob.');
 				}
 				resolve(blob);
-			}, imgFile.type);
+			});
 		});
 	}
 
-	async function createImageTFTensor(
-		uploadedImage: HTMLImageElement,
-		uploadedImageFile: File,
-		longSideLength: number = 1024
-	): Promise<tf.Tensor3D> {
-		resizedImageBlob = await resizeImage(uploadedImage, uploadedImageFile, longSideLength);
-		const imageElement = await createImageBitmap(resizedImageBlob);
-		let imageData = tf.browser.fromPixels(imageElement).toFloat();
-		return imageData;
-	}
+	// async function createImageTFTensor(
+	// 	uploadedImageBASE64: HTMLImageElement,
+	// 	uploadedImageFile: File,
+	// 	longSideLength: number = 1024
+	// ): Promise<tf.Tensor3D> {
+
+	// 	return getResizedImgRGBArray(uploadedImageBASE64, longSideLength);
+	// 	// const imageElement = await createImageBitmap(resizedImageBlob);
+	// 	// let imageData = tf.browser.fromPixels(imageElement).toFloat();
+	// 	// //console log imagedata tensor data
+	// 	// imageData.data().then((data) => {
+	// 	// 	console.log("tf img data")
+	// 	// 	console.log(data)
+	// 	// })
+	// 	// return imageData.toFloat();;
+	// }
 
 	const handleFileInputChange = async (event: Event) => {
 		const files = (event.target as HTMLInputElement).files;
@@ -112,9 +145,9 @@
 		clickedPositions = [];
 		let reader = new FileReader();
 		reader.onload = async (e) => {
-			imageURL = e.target?.result as string;
+			imagebase64URL = e.target?.result as string;
 			const img = new Image();
-			img.src = imageURL as string;
+			img.src = imagebase64URL as string;
 			img.onload = async () => {
 				// Calculate aspect ratio
 				imageCanvas.width = img.width;
@@ -134,14 +167,16 @@
 				ImgResToCanvasSizeRatio = img.width / canvasElementSize.width;
 
 				drawImageWithMarkers(imageCanvas);
-				const uploadedImgTFTensor = await createImageTFTensor(
-					img,
-					uploadedImageFile,
-					longSideLength
-				);
-				if (uploadedImgTFTensor && onnxSession) {
+
+				let uploadedImgRGBData = await getResizedImgRGBArray(img, longSideLength);
+
+				let a = Float32Array.from(uploadedImgRGBData.rgbArray);
+
+				// console.log(uploadedImgRGBData.rgbArray as Uint8Array)
+				if (uploadedImgRGBData && onnxSession) {
 					// isEmbedderRunning = true;
-					const embedder_output = await runModelEncoder(onnxSession, uploadedImgTFTensor);
+					const embedder_output = await runModelEncoder(onnxSession, uploadedImgRGBData);
+
 					if (embedder_output) {
 						embedding_tensor = embedder_output;
 						isEmbedderRunning = false;
@@ -156,12 +191,18 @@
 
 	async function runModelEncoder(
 		embedderOnnxSession: InferenceSession,
-		imgTensor: tf.Tensor3D
+		imgRGBData: loadedImgRGBData
 	): Promise<tf.Tensor<tf.Rank> | undefined> {
 		try {
-			const input = new Float32Array(imgTensor.dataSync());
-			const inputTensor = new Tensor('float32', input, imgTensor.shape);
+			// const input = new Float32Array(imgTensor.dataSync());
+			let floatArray = Float32Array.from(imgRGBData.rgbArray);
+			const inputTensor = new Tensor('float32', floatArray, [
+				imgRGBData.height,
+				imgRGBData.width,
+				3
+			]);
 			const output = await embedderOnnxSession.run({ input_image: inputTensor });
+
 			return tf.tensor(
 				output['image_embeddings'].data as any,
 				output['image_embeddings'].dims as any,
@@ -222,9 +263,7 @@
 		// let data = modelInput.image_embeddings.arraySync();
 		const predictions: any = await model.executeAsync(modelInput);
 		const lastData = await predictions[predictions.length - 1].arraySync();
-
 		const data = lastData[0][0];
-
 		drawImageWithMask(data, imageCanvas);
 	}
 
@@ -365,7 +404,7 @@
 		currentCanvasRelativeY = event.offsetY;
 		if (isPainting) {
 			paintOnCanvas(x, y, brushSize, canvas);
-		} 
+		}
 	}
 
 	function showBrushCursor(event: MouseEvent) {
@@ -381,18 +420,14 @@
 		//scale to website pixels from canvas res
 		let brushSizeScaled = brushSize * ImgResToCanvasSizeRatio;
 		let ctx = canvas.getContext('2d', { willReadFrequently: true });
-		console.log("painting")
-		console.log(prevMouseX, prevMouseY)
-		console.log(x, y)
 		// Draw on canvas
 		if (ctx) {
-			if(prevMouseX === x && prevMouseY === y){
+			if (prevMouseX === x && prevMouseY === y) {
 				ctx.beginPath();
 				ctx.arc(x, y, brushSizeScaled / 2, 0, 2 * Math.PI);
 				ctx.fillStyle = 'rgba(89, 156, 255, 1)';
 				ctx.fill();
-			}
-			else{
+			} else {
 				ctx.strokeStyle = 'rgba(89, 156, 255, 1)';
 				ctx.beginPath();
 				ctx.lineJoin = 'round';
@@ -438,7 +473,138 @@
 			selectedBrushMode === 'brush' ? 'source-over' : 'destination-out';
 	}
 
+	function reshapeBufferToNCHW(
+		rgbBuffer: Uint8Array,
+		batchSize = 1,
+		numChannels: number,
+		imageWidth: number,
+		imageHeight: number
+	) {
+		const nchwBuffer = new Uint8Array(batchSize * numChannels * imageWidth * imageHeight);
+		for (let i = 0; i < imageWidth * imageHeight; i++) {
+			for (let c = 0; c < numChannels; c++) {
+				for (let b = 0; b < batchSize; b++) {
+					const indexInNCHW =
+						b * numChannels * imageWidth * imageHeight + c * imageWidth * imageHeight + i;
+					const indexInRGB = i * numChannels + c;
+					nchwBuffer[indexInNCHW] = rgbBuffer[indexInRGB];
+				}
+			}
+		}
+		return nchwBuffer;
+	}
 
+	function booleanMaskToUint8Buffer(maskArray: boolean[][]) {
+		const height = maskArray.length;
+		const width = maskArray[0].length;
+
+		// Create a new Uint8Array to hold the converted buffer
+		const uint8Buffer = new Uint8Array(height * width);
+
+		for (let i = 0; i < height; i++) {
+			for (let j = 0; j < width; j++) {
+				// Convert boolean value to uint8 (0 or 1)
+				uint8Buffer[i * width + j] = maskArray[i][j] ?0 : 255;
+			}
+		}
+
+		return uint8Buffer;
+	}
+
+	function reshapeCHWtoHWC(chwBuffer: Uint8Array, width: number, height: number, channels: number= 3) {
+		const hwcBuffer = new Uint8Array(width * height * channels);
+
+		for (let c = 0; c < channels; c++) {
+			for (let h = 0; h < height; h++) {
+				for (let w = 0; w < width; w++) {
+					const chwIndex = c * height * width + h * width + w;
+					const hwcIndex = h * width * channels + w * channels + c;
+					hwcBuffer[hwcIndex] = chwBuffer[chwIndex];
+				}
+			}
+		}
+
+		return hwcBuffer;
+	}
+
+	function renderImageToCanvas(
+		imageDataRGB: Uint8Array,
+		canvas: HTMLCanvasElement,
+		img_height: number,
+		img_width: number
+	) {
+
+		// Create an ImageData object
+		const canvasContext = canvas.getContext('2d');
+		canvas.width = img_width;
+		canvas.height = img_height;
+		// Clear the canvas
+		
+		let dataRGBBufferReshaped = reshapeCHWtoHWC(imageDataRGB, img_width, img_height);
+		let imgDataBuffer = new Uint8ClampedArray(img_height * img_width * 4);
+
+		
+
+		// fill the imgData buffer, adding alpha channel
+		for (let i = 0; i < img_height * img_width; i++) {
+			imgDataBuffer[i * 4] = dataRGBBufferReshaped[i * 3];
+			imgDataBuffer[i * 4 + 1] = dataRGBBufferReshaped[i * 3 + 1];
+			imgDataBuffer[i * 4 + 2] = dataRGBBufferReshaped[i * 3 + 2];
+			imgDataBuffer[i * 4 + 3] = 255;
+		}
+
+		// const reshaped = reshapeCHWtoHWC(imageData, img_width, img_height);
+		// Draw the ImageData onto the canvas
+		const imgdata = new ImageData(imgDataBuffer,img_width, img_height);
+		canvasContext?.putImageData(imgdata, 0, 0);
+	}
+
+	async function runInpainting() {
+		console.log('inpaint');
+		console.log(onnxSessionMIGAN);
+		let imgUInt8Array = canvasToRGBArray(imageCanvas).rgbArray;
+
+		let nchwBuffer = reshapeBufferToNCHW(
+			imgUInt8Array,
+			1,
+			3,
+			imageCanvas.width,
+			imageCanvas.height
+		);
+		let imgNCHWTensor = new Tensor('uint8', nchwBuffer, [
+			1,
+			3,
+			imageCanvas.height,
+			imageCanvas.width
+		]);
+		const maskArray = masksStatesHistoryStack[masksStatesHistoryStack.length - 1];
+		let maskUInt8Buffer = booleanMaskToUint8Buffer(maskArray);
+		let maskNCHWTensor = new Tensor('uint8', maskUInt8Buffer, [
+			1,
+			1,
+			imageCanvas.height,
+			imageCanvas.width
+		]);
+
+		console.log(imgNCHWTensor);
+		console.log(maskNCHWTensor);
+		const output = await onnxSessionMIGAN?.run({ image: imgNCHWTensor, mask: maskNCHWTensor });
+
+		if (output) {
+			inpaintedImgCanvas.width = imageCanvas.width;
+			inpaintedImgCanvas.height = imageCanvas.height;
+			// renderImageToCanvas(output['result'].data, inpaintedImgCanvas, imageCanvas.height, imageCanvas.width);
+			let result: Uint8Array = output['result'].data as Uint8Array;
+			renderImageToCanvas(
+				result,
+				inpaintedImgCanvas,
+				imageCanvas.height,
+				imageCanvas.width
+			);
+		}
+
+		console.log(output);
+	}
 
 	// //Brush tool mask
 	// function startPainting(event: MouseEvent) {
@@ -525,6 +691,10 @@
 				executionProviders: ['wasm'],
 				graphOptimizationLevel: 'all'
 			});
+			onnxSessionMIGAN = await InferenceSession.create(mobile_inpainting_GAN, {
+				executionProviders: ['wasm'],
+				graphOptimizationLevel: 'all'
+			});
 			console.log('ONNX Model loaded successfully');
 		} catch (error) {
 			console.error('Error loading the ONNX model:', error);
@@ -548,6 +718,7 @@
 
 		await loadOnnxModel();
 		model = await tf.loadGraphModel(mobileSAMDecoderPath);
+		console.log('loaded');
 		isLoading = false;
 
 		//LOADING EMBEDDINGS
@@ -584,6 +755,11 @@
 	<input type="file" accept="image/*" on:change={(e) => handleFileInputChange(e)} />
 </div>
 <div style="display: {uploadedImage ? 'block' : 'none'}">
+	<div id="inpaintBtn">
+		<button on:click={runInpainting}>Inpaint</button>
+	</div>
+	<canvas id="inpaintedImageTmp" bind:this={inpaintedImgCanvas} />
+
 	<button on:click={runModelDecoder} disabled={isEmbedderRunning}>Run Decoder</button>
 	<button on:click={undoLastAction} disabled={masksStatesHistoryStack.length === 0}>Undo</button>
 	<button on:click={redoLastAction} disabled={masksStatesUndoedStack.length === 0}>Redo</button>
@@ -618,17 +794,20 @@
 		on:mouseleave={hideBrushCursor}
 		style="cursor: {currentCursor === 'default' ? 'auto' : 'none'}"
 		role="group"
-		>
-		<div id="brushToolCursor" style="
-			display: {currentCursor === 'default' ? "none" : "block"};
+	>
+		<div
+			id="brushToolCursor"
+			style="
+			display: {currentCursor === 'default' ? 'none' : 'block'};
 			width: {brushSize}px;
 			height: {brushSize}px;
 			left: {currentCanvasRelativeX}px;
 			top: {currentCanvasRelativeY}px;
-			background-color: {selectedBrushMode === "brush" ? "#599cff" : "#f5f5f5"};
+			background-color: {selectedBrushMode === 'brush' ? '#599cff' : '#f5f5f5'};
 			opacity: {isPainting ? 0.5 : 0.3};
 
-		" />
+		"
+		/>
 		<canvas id="imageCanvas" bind:this={imageCanvas} />
 		<canvas
 			id="maskCanvas"
