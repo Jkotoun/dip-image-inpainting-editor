@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import * as tf from '@tensorflow/tfjs';
-	import Npyjs from 'npyjs';
 	import { Tensor } from 'onnxruntime-web';
 	import { InferenceSession } from 'onnxruntime-web';
 
@@ -47,7 +46,12 @@
 	//editor globals - image and canvas interactions
 	let imagebase64URL: any;
 	let uploadedImage: HTMLImageElement | null = null;
-	let clickedPositions: { x: number; y: number; type: pointType }[] = [];
+	interface SAMmarker {
+		x: number;
+		y: number;
+		type: pointType;
+	}
+	let clickedPositions: SAMmarker[] = [];
 	let ImgResToCanvasSizeRatio: number = 1;
 	let imageCanvas: any;
 	let maskCanvas: any;
@@ -55,6 +59,17 @@
 	// let mask: boolean[][];
 	let masksStatesHistoryStack: any[] = [];
 	let masksStatesUndoedStack: any[] = [];
+
+	//editor state
+	//refactored undo prep
+	interface editorState {
+		maskBrush: boolean[][];
+		maskSAM: boolean[][];
+		clickedPositions: { x: number; y: number; type: pointType }[];
+		imgData: ImageData;
+	}
+	let imgDataOriginal: ImageData;
+
 	let currentCursor: 'default' | 'brush' | 'eraser' = 'default';
 
 	//brush tool
@@ -88,51 +103,23 @@
 		tempContext?.drawImage(img, 0, 0, newWidth, newHeight);
 		resizedImgWidth = newWidth;
 		resizedImgHeight = newHeight;
-
-		return canvasToRGBArray(tempCanvas);
+		let tmpCanvasData = getImageData(tempCanvas);
+		return imgDataToRGBArray(tmpCanvasData);
 	}
 
-	function canvasToRGBArray(canvas: HTMLCanvasElement): loadedImgRGBData {
-		let canvasContext = canvas.getContext('2d');
-		let imgData = canvasContext?.getImageData(0, 0, canvas.width, canvas.height);
+	function imgDataToRGBArray(imgData: ImageData): loadedImgRGBData {
+		// let canvasContext = canvas.getContext('2d');
+		// let imgData = canvasContext?.getImageData(0, 0, canvas.width, canvas.height);
 		let pixels = imgData?.data;
 		//create rgb array
-		let rgbArray = new Uint8Array(canvas.width * canvas.height * 3);
-		for (let i = 0; i < canvas.width * canvas.height; i++) {
+		let rgbArray = new Uint8Array(imgData.width * imgData.height * 3);
+		for (let i = 0; i < imgData.width * imgData.height; i++) {
 			rgbArray[i * 3] = pixels![i * 4];
 			rgbArray[i * 3 + 1] = pixels![i * 4 + 1];
 			rgbArray[i * 3 + 2] = pixels![i * 4 + 2];
 		}
-		return { rgbArray, width: canvas.width, height: canvas.height } as loadedImgRGBData;
+		return { rgbArray, width: imgData.width, height: imgData.height } as loadedImgRGBData;
 	}
-
-	function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
-		return new Promise((resolve) => {
-			canvas.toBlob((blob) => {
-				if (!blob) {
-					throw new Error('Failed to convert canvas to blob.');
-				}
-				resolve(blob);
-			});
-		});
-	}
-
-	// async function createImageTFTensor(
-	// 	uploadedImageBASE64: HTMLImageElement,
-	// 	uploadedImageFile: File,
-	// 	longSideLength: number = 1024
-	// ): Promise<tf.Tensor3D> {
-
-	// 	return getResizedImgRGBArray(uploadedImageBASE64, longSideLength);
-	// 	// const imageElement = await createImageBitmap(resizedImageBlob);
-	// 	// let imageData = tf.browser.fromPixels(imageElement).toFloat();
-	// 	// //console log imagedata tensor data
-	// 	// imageData.data().then((data) => {
-	// 	// 	console.log("tf img data")
-	// 	// 	console.log(data)
-	// 	// })
-	// 	// return imageData.toFloat();;
-	// }
 
 	const handleFileInputChange = async (event: Event) => {
 		const files = (event.target as HTMLInputElement).files;
@@ -164,16 +151,30 @@
 				const canvasElementSize = imageCanvas.getBoundingClientRect();
 				ImgResToCanvasSizeRatio = img.width / canvasElementSize.width;
 
-				drawImageWithMarkers(imageCanvas);
+				const ctx = imageCanvas.getContext('2d');
+				if (uploadedImage) {
+					ctx.drawImage(
+						uploadedImage,
+						0,
+						0,
+						uploadedImage.width,
+						uploadedImage.height,
+						0,
+						0,
+						imageCanvas.width,
+						imageCanvas.height
+					);
+				imgDataOriginal = getImageData(imageCanvas);
+				}
 
-				let uploadedImgRGBData = await getResizedImgRGBArray(img, longSideLength);
+				// drawImage(imageCanvas);
+				drawMarkers(imageCanvas, clickedPositions);
 
-				let a = Float32Array.from(uploadedImgRGBData.rgbArray);
-
-				// console.log(uploadedImgRGBData.rgbArray as Uint8Array)
-				if (uploadedImgRGBData && onnxSession) {
+				//input for SAM encoder
+				let uploadedResizedImgRGBData = await getResizedImgRGBArray(img, longSideLength);
+				if (uploadedResizedImgRGBData && onnxSession) {
 					// isEmbedderRunning = true;
-					const embedder_output = await runModelEncoder(onnxSession, uploadedImgRGBData);
+					const embedder_output = await runModelEncoder(onnxSession, uploadedResizedImgRGBData);
 
 					if (embedder_output) {
 						embedding_tensor = embedder_output;
@@ -185,6 +186,7 @@
 		};
 		isEmbedderRunning = true;
 		reader.readAsDataURL(uploadedImageFile);
+
 	};
 
 	async function runModelEncoder(
@@ -264,11 +266,20 @@
 		const data = lastData[0][0];
 
 		//convert to bool array
-		const maskArray = data.map((val: number[]) => val.map((v) => v > 0.0));
-		console.log(maskArray)
-		console.log("result decoder")
-		console.log(data)
-		drawImageWithMask(maskArray, imageCanvas);
+		const maskArray = data.map((val: number[]) => val.map((v) => v > -10.0));
+
+		//combine maskArray with current state mask with or
+		let maskArrayCombined;
+		if(masksStatesHistoryStack.length > 0){
+			maskArrayCombined = maskArray.map((row: boolean[], y: number) =>
+				row.map((val, x) => val || masksStatesHistoryStack[masksStatesHistoryStack.length - 1][y][x])
+			);
+		} else {
+			maskArrayCombined = maskArray;
+		}
+
+		drawMask(maskCanvas, maskArrayCombined);
+		masksStatesHistoryStack = [...masksStatesHistoryStack, maskArrayCombined];
 	}
 
 	//EDITOR HANDLING FUNCTIONS
@@ -291,68 +302,51 @@
 			y: yScaled,
 			type: event.button === 0 ? 'positive' : 'negative'
 		});
-		drawImageWithMarkers(imageCanvas);
+		//clear canvas
+		clearCanvas(imageCanvas);
+		drawImage(imageCanvas, imgDataOriginal);
+		drawMarkers(imageCanvas, clickedPositions);
 	}
-	function drawImageWithMarkers(canvas: HTMLCanvasElement) {
-		// Clear canvas
-		const ctx = canvas.getContext('2d');
-		if (ctx) {
-			ctx.clearRect(0, 0, canvas.width, canvas.height);
-			if (uploadedImage) {
-				ctx.drawImage(
-					uploadedImage,
-					0,
-					0,
-					uploadedImage.width,
-					uploadedImage.height,
-					0,
-					0,
-					canvas.width,
-					canvas.height
-				);
-				for (const pos of clickedPositions) {
-					ctx.fillStyle = pos.type === 'positive' ? 'green' : 'red';
-					ctx.beginPath();
-					ctx.arc(pos.x, pos.y, 5 * ImgResToCanvasSizeRatio, 0, Math.PI * 2);
-					ctx.fill();
-				}
-			}
-		}
-	}
-
-	function drawImageWithMask(mask: any[][], canvas: HTMLCanvasElement) {
+	// function drawImage(canvas: HTMLCanvasElement, imageData: ImageData) {
 		// Clear canvas
 		// const ctx = canvas.getContext('2d');
-		// ctx.clearRect(0, 0, canvas.width, canvas.height);
-		drawImageWithMarkers(canvas);
-		const ctx = canvas.getContext('2d');
-		// Draw image
-		if (uploadedImage && ctx) {
-			// Draw mask
-			ctx.fillStyle = 'rgba(89, 156, 255, 1)';
+		// if (ctx) {
+		// 	ctx.clearRect(0, 0, canvas.width, canvas.height);
+		// 	console.log(uploadedImage)
+		// 	if (uploadedImage) {
+		// 		ctx.drawImage(
+		// 			uploadedImage,
+		// 			0,
+		// 			0,
+		// 			uploadedImage.width,
+		// 			uploadedImage.height,
+		// 			0,
+		// 			0,
+		// 			canvas.width,
+		// 			canvas.height
+		// 		);
+		// 	}
+		// }
+	// }
 
-			//iterate through canvas pixels and quant to mask values
-			// let widthStep = canvas.width / resizedImgWidth;
-			// let heightStep = canvas.height / resizedImgHeight;
-			// for (let x = 0; x<canvas.width; x++) {
-			// 	for (let y = 0; y<canvas.height; y++) {
-			// 		if (mask[Math.round(y*heightStep)][Math.round(x*widthStep)] > 0) {
-			// 			ctx.fillRect(x, y, 1, 1);
-			// 		}
-			// 	}
-			// }
+		function drawImage(canvas: HTMLCanvasElement, imageData: ImageData) {
+			console.log("drawing")
+			console.log(imageData)
+			canvas.getContext('2d')!.putImageData(imageData, 0, 0);
+		}	
 
-			const widthStep = canvas.width / mask[0].length;
-			const heightStep = canvas.height / mask.length;
-			for (let i = 0; i < mask.length; i++) {
-				for (let j = 0; j < mask[i].length; j++) {
-					if (mask[i][j] === true) {
-						ctx.fillRect(j * widthStep, i * heightStep, 1, 1);
-					}
-				}
-			}
+
+	function drawMarkers(canvas: HTMLCanvasElement, clickedPositions: SAMmarker[]) {
+		const canvasContext = canvas.getContext('2d');
+		if (!canvasContext) return;
+		for (const pos of clickedPositions) {
+			canvasContext.fillStyle = pos.type === 'positive' ? 'green' : 'red';
+			canvasContext.beginPath();
+			canvasContext.arc(pos.x, pos.y, 5 * ImgResToCanvasSizeRatio, 0, Math.PI * 2);
+			canvasContext.fill();
 		}
 	}
+
 	function undoLastAction() {
 		//check before removing, if there is any
 		if (masksStatesHistoryStack.length > 0) {
@@ -369,7 +363,9 @@
 			clearCanvas(maskCanvas);
 		}
 		// Redraw image with markers
-		drawImageWithMarkers(imageCanvas);
+		//TODO refactor
+		drawImage(imageCanvas, imgDataOriginal);
+		drawMarkers(imageCanvas, clickedPositions);
 	}
 
 	function redoLastAction() {
@@ -379,8 +375,8 @@
 				masksStatesUndoedStack[masksStatesUndoedStack.length - 1]
 			];
 			masksStatesUndoedStack = masksStatesUndoedStack.slice(0, -1);
-			drawMask(maskCanvas, masksStatesHistoryStack[masksStatesHistoryStack.length - 1]);
-			drawImageWithMarkers(imageCanvas);
+			// drawMask(maskCanvas, masksStatesHistoryStack[masksStatesHistoryStack.length - 1]);
+			// drawImageWithMarkers(imageCanvas);
 		}
 	}
 
@@ -447,6 +443,10 @@
 			prevMouseX = x;
 			prevMouseY = y;
 		}
+	}
+
+	function getImageData(canvas: HTMLCanvasElement) {
+		return canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height);
 	}
 
 	function createMaskArray(maskCanvas: HTMLCanvasElement) {
@@ -566,9 +566,8 @@
 	}
 
 	async function runInpainting() {
-		console.log('inpaint');
-		console.log(onnxSessionMIGAN);
-		let imgUInt8Array = canvasToRGBArray(imageCanvas).rgbArray;
+		// let imgData = getImageData(imageCanvas);
+		let imgUInt8Array = imgDataToRGBArray(imgDataOriginal).rgbArray;
 
 		let nchwBuffer = reshapeBufferToNCHW(
 			imgUInt8Array,
@@ -592,8 +591,6 @@
 			imageCanvas.width
 		]);
 
-		console.log(imgNCHWTensor);
-		console.log(maskNCHWTensor);
 		const output = await onnxSessionMIGAN?.run({ image: imgNCHWTensor, mask: maskNCHWTensor });
 
 		if (output) {
@@ -603,34 +600,7 @@
 			let result: Uint8Array = output['result'].data as Uint8Array;
 			renderImageToCanvas(result, inpaintedImgCanvas, imageCanvas.height, imageCanvas.width);
 		}
-
-		console.log(output);
 	}
-
-	// //Brush tool mask
-	// function startPainting(event: MouseEvent) {
-	// 	isPainting = true;
-	// 	mouse = getMousePos(maskCanvas, event);
-	// 	prevMouseX = mouse.x;
-	// 	prevMouseY = mouse.y;
-	// 	updateMask(prevMouseX, prevMouseY);
-	// }
-
-	// function paint(event: MouseEvent) {
-	// 	if (isPainting) {
-	// 		const x = event.offsetX*ImgResToCanvasSizeRatio;
-	// 		const y = event.offsetY*ImgResToCanvasSizeRatio;
-	// 		console.log(x, y);
-	// 		updateMaskWithBrush(x, y, brushSize);
-	// 		drawMask(maskCanvas.getContext('2d'));
-	// 		prevMouseX = x;
-	// 		prevMouseY = y;
-	// 	}
-	// }
-
-	// function stopPainting() {
-	// 	isPainting = false;
-	// }
 
 	function drawMask(maskCanvas: HTMLCanvasElement, maskArray: any) {
 		const maskCanvasctx = maskCanvas.getContext('2d');
@@ -658,33 +628,6 @@
 		}
 	}
 
-	// function initializeMask(canvasWidth: number, canvasHeight: number) {
-	// 	mask = new Array(canvasHeight);
-	// 	for (let i = 0; i < canvasHeight; i++) {
-	// 		mask[i] = new Array(canvasWidth).fill(false);
-	// 	}
-	// }
-
-	// // Function to update the mask array
-	// function updateMask(x: number, y: number) {
-	// 	if (x >= 0 && x < mask[0].length && y >= 0 && y < mask.length) {
-	// 		mask[Math.round(y)][Math.round(x)] = true;
-	// 	}
-	// }
-
-	// function updateMaskWithBrush(x: number, y: number, brushSize: number) {
-	// const radius = Math.floor((brushSize / 2)*ImgResToCanvasSizeRatio);
-	// for (let offsetY = -radius; offsetY <= radius; offsetY++) {
-	//     for (let offsetX = -radius; offsetX <= radius; offsetX++) {
-	//         const distanceSquared = offsetX * offsetX + offsetY * offsetY;
-	//         if (distanceSquared <= radius * radius) {
-	//             const pixelX = x + offsetX;
-	//             const pixelY = y + offsetY;
-	//             updateMask(pixelX, pixelY);
-	//         }
-	//     }
-	// }
-	// }
 	//ONMOUNT MODELS LOADINGS FUNCTIONS
 	async function loadOnnxModel() {
 		try {
@@ -721,25 +664,7 @@
 		model = await tf.loadGraphModel(mobileSAMDecoderPath);
 		console.log('loaded');
 		isLoading = false;
-
-		//LOADING EMBEDDINGS
-		// //load precomputed embeddings
-		// const npy = new Npyjs();
-		// // const embeddings = await npy.load('image_embedding_tiny.npy');
-		// const embeddings = await npy.load('large_res_img.npy');
-		// // // console.log(embeddings.shape);
-		// // // console.log(embeddings.data);
-
-		// embedding_tensor_loaded = tf.tensor(embeddings.data as any, embeddings.shape, 'float32');
 	});
-
-	// Function to get the computed width of an element
-	// function getComputedWidth(element: any) {
-	// 	const style = ;
-	// 	return style.width;
-	// }
-
-	// Wait for the window to load
 </script>
 
 {#if isLoading}
@@ -833,21 +758,6 @@
 		"
 		/>
 		<canvas id="imageCanvas" bind:this={imageCanvas} />
-		<!-- <canvas
-			id="maskCanvas"
-			bind:this={maskCanvas}
-			on:mousedown={startPainting}
-			on:mouseup={stopPainting}
-			on:mousemove={(event) => handleEditorMouseMove(event, maskCanvas)
-			}
-		/> -->
-
-		<!-- <canvas
-		id="maskCanvas"
-		bind:this={maskCanvas}
-		 on:click={handleCanvasClick} 
-		 on:contextmenu={handleCanvasClick} 
-	/> -->
 
 		<canvas
 			id="maskCanvas"
