@@ -8,10 +8,8 @@
 	//models paths
 	const mobileSAMEncoderPath = '/mobile_sam.encoder.onnx';
 	const mobileSAMDecoderPath = '/tfjs_decoder_mobile/model.json';
-	const mobile_inpainting_GAN = '/migan_bilinear_512_f32.onnx';
+	const mobile_inpainting_GAN = '/migan_pipeline_v2.onnx';
 
-
-	
 	//types definition
 	type pointType = 'positive' | 'negative';
 	// interface modelInputInterface {
@@ -67,7 +65,7 @@
 	let currentCanvasRelativeY = 0;
 	// let mouse: any;
 	let selectedBrushMode: 'brush' | 'eraser' = 'brush'; // Initial selected option
-
+	let selectedTool: 'brush' | 'segment_anything' = 'segment_anything';
 	//EMBEDDING FUNCTIONS
 	function getResizedImgRGBArray(
 		img: HTMLImageElement,
@@ -264,7 +262,13 @@
 		const predictions: any = await model.executeAsync(modelInput);
 		const lastData = await predictions[predictions.length - 1].arraySync();
 		const data = lastData[0][0];
-		drawImageWithMask(data, imageCanvas);
+
+		//convert to bool array
+		const maskArray = data.map((val: number[]) => val.map((v) => v > 0.0));
+		console.log(maskArray)
+		console.log("result decoder")
+		console.log(data)
+		drawImageWithMask(maskArray, imageCanvas);
 	}
 
 	//EDITOR HANDLING FUNCTIONS
@@ -316,7 +320,7 @@
 		}
 	}
 
-	function drawImageWithMask(mask: number[][], canvas: HTMLCanvasElement) {
+	function drawImageWithMask(mask: any[][], canvas: HTMLCanvasElement) {
 		// Clear canvas
 		// const ctx = canvas.getContext('2d');
 		// ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -342,7 +346,7 @@
 			const heightStep = canvas.height / mask.length;
 			for (let i = 0; i < mask.length; i++) {
 				for (let j = 0; j < mask[i].length; j++) {
-					if (mask[i][j] > 0) {
+					if (mask[i][j] === true) {
 						ctx.fillRect(j * widthStep, i * heightStep, 1, 1);
 					}
 				}
@@ -504,14 +508,19 @@
 		for (let i = 0; i < height; i++) {
 			for (let j = 0; j < width; j++) {
 				// Convert boolean value to uint8 (0 or 1)
-				uint8Buffer[i * width + j] = maskArray[i][j] ?0 : 255;
+				uint8Buffer[i * width + j] = maskArray[i][j] ? 0 : 255;
 			}
 		}
 
 		return uint8Buffer;
 	}
 
-	function reshapeCHWtoHWC(chwBuffer: Uint8Array, width: number, height: number, channels: number= 3) {
+	function reshapeCHWtoHWC(
+		chwBuffer: Uint8Array,
+		width: number,
+		height: number,
+		channels: number = 3
+	) {
 		const hwcBuffer = new Uint8Array(width * height * channels);
 
 		for (let c = 0; c < channels; c++) {
@@ -533,17 +542,14 @@
 		img_height: number,
 		img_width: number
 	) {
-
 		// Create an ImageData object
 		const canvasContext = canvas.getContext('2d');
 		canvas.width = img_width;
 		canvas.height = img_height;
 		// Clear the canvas
-		
+
 		let dataRGBBufferReshaped = reshapeCHWtoHWC(imageDataRGB, img_width, img_height);
 		let imgDataBuffer = new Uint8ClampedArray(img_height * img_width * 4);
-
-		
 
 		// fill the imgData buffer, adding alpha channel
 		for (let i = 0; i < img_height * img_width; i++) {
@@ -555,7 +561,7 @@
 
 		// const reshaped = reshapeCHWtoHWC(imageData, img_width, img_height);
 		// Draw the ImageData onto the canvas
-		const imgdata = new ImageData(imgDataBuffer,img_width, img_height);
+		const imgdata = new ImageData(imgDataBuffer, img_width, img_height);
 		canvasContext?.putImageData(imgdata, 0, 0);
 	}
 
@@ -595,12 +601,7 @@
 			inpaintedImgCanvas.height = imageCanvas.height;
 			// renderImageToCanvas(output['result'].data, inpaintedImgCanvas, imageCanvas.height, imageCanvas.width);
 			let result: Uint8Array = output['result'].data as Uint8Array;
-			renderImageToCanvas(
-				result,
-				inpaintedImgCanvas,
-				imageCanvas.height,
-				imageCanvas.width
-			);
+			renderImageToCanvas(result, inpaintedImgCanvas, imageCanvas.height, imageCanvas.width);
 		}
 
 		console.log(output);
@@ -768,37 +769,60 @@
 	<input type="range" min="1" max="500" bind:value={brushSize} />
 	<!-- <button on:click={() => switchToBrushDrawingMode(maskCanvas)}>Brush</button>
 	<button on:click={() => switchToBrushErasingMode(maskCanvas)}>Eraser</button> -->
+
 	<div>
 		<label>
-			<input
-				type="radio"
-				bind:group={selectedBrushMode}
-				value="brush"
-				on:change={(e) => handleBrushModeChange(e, maskCanvas)}
-			/>
-			Brush
+			<input type="radio" bind:group={selectedTool} value="segment_anything" />
+			AI object selector
 		</label>
 		<label>
-			<input
-				type="radio"
-				bind:group={selectedBrushMode}
-				value="eraser"
-				on:change={(e) => handleBrushModeChange(e, maskCanvas)}
-			/>
-			Eraser
+			<input type="radio" bind:group={selectedTool} value="brush" />
+			Brush
 		</label>
 	</div>
+
+	{#if selectedTool === 'brush'}
+		<div>
+			<label>
+				<input
+					type="radio"
+					bind:group={selectedBrushMode}
+					value="brush"
+					on:change={(e) => handleBrushModeChange(e, maskCanvas)}
+				/>
+				Brush
+			</label>
+			<label>
+				<input
+					type="radio"
+					bind:group={selectedBrushMode}
+					value="eraser"
+					on:change={(e) => handleBrushModeChange(e, maskCanvas)}
+				/>
+				Eraser
+			</label>
+		</div>
+	{/if}
+
 	<div
 		class="canvases"
 		on:mouseenter={showBrushCursor}
 		on:mouseleave={hideBrushCursor}
-		style="cursor: {currentCursor === 'default' ? 'auto' : 'none'}"
+		style="cursor: {selectedTool === 'segment_anything'
+			? 'default'
+			: currentCursor === 'default'
+			? 'auto'
+			: 'none'}"
 		role="group"
 	>
 		<div
 			id="brushToolCursor"
 			style="
-			display: {currentCursor === 'default' ? 'none' : 'block'};
+			display: {selectedTool === 'segment_anything'
+				? 'none'
+				: currentCursor === 'default'
+				? 'none'
+				: 'block'};
 			width: {brushSize}px;
 			height: {brushSize}px;
 			left: {currentCanvasRelativeX}px;
@@ -809,19 +833,36 @@
 		"
 		/>
 		<canvas id="imageCanvas" bind:this={imageCanvas} />
-		<canvas
+		<!-- <canvas
 			id="maskCanvas"
 			bind:this={maskCanvas}
 			on:mousedown={startPainting}
 			on:mouseup={stopPainting}
-			on:mousemove={(event) => handleEditorMouseMove(event, maskCanvas)}
+			on:mousemove={(event) => handleEditorMouseMove(event, maskCanvas)
+			}
+		/> -->
+
+		<!-- <canvas
+		id="maskCanvas"
+		bind:this={maskCanvas}
+		 on:click={handleCanvasClick} 
+		 on:contextmenu={handleCanvasClick} 
+	/> -->
+
+		<canvas
+			id="maskCanvas"
+			bind:this={maskCanvas}
+			on:mousedown={selectedTool === 'brush' ? startPainting : undefined}
+			on:mouseup={selectedTool === 'brush' ? stopPainting : undefined}
+			on:mousemove={(event) =>
+				selectedTool === 'brush' ? handleEditorMouseMove(event, maskCanvas) : undefined}
+			on:click={selectedTool === 'segment_anything' ? handleCanvasClick : undefined}
+			on:contextmenu={selectedTool === 'segment_anything' ? handleCanvasClick : undefined}
 		/>
 	</div>
 </div>
 
 <!-- TODO AI tool select -->
-<!-- on:click={handleCanvasClick} -->
-<!-- on:contextmenu={handleCanvasClick} -->
 
 <style>
 	.canvases {
