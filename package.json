@@ -30,6 +30,10 @@
 	"type": "module",
 	"dependencies": {
 		"@tensorflow/tfjs": "^4.13.0",
-		"@tensorflow/tfjs-backend-webgpu": "^4.13.0"
+		"@tensorflow/tfjs-backend-webgpu": "^4.13.0",
+		"jimp": "^0.22.10",
+		"npyjs": "^0.6.0",
+		"onnxruntime-web": "^1.17.0",
+		"vite-plugin-static-copy": "^1.0.1"
 	}
 }
