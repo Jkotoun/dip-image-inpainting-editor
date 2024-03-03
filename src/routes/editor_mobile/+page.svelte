@@ -46,32 +46,41 @@
 	//editor globals - image and canvas interactions
 	let imagebase64URL: any;
 	let uploadedImage: HTMLImageElement | null = null;
+	let ImgResToCanvasSizeRatio: number = 1;
+	let imageCanvas: any;
+	let maskCanvas: any;
+	let isPainting = false;
+	
+	
+	//OLD STATE MANAGEMENT 
+	let masksStatesHistoryStack: any[] = [];
+	let masksStatesUndoedStack: any[] = [];
 	interface SAMmarker {
 		x: number;
 		y: number;
 		type: pointType;
 	}
 	let clickedPositions: SAMmarker[] = [];
-	let ImgResToCanvasSizeRatio: number = 1;
-	let imageCanvas: any;
-	let maskCanvas: any;
-	let isPainting = false;
-	// let mask: boolean[][];
-	let masksStatesHistoryStack: any[] = [];
-	let masksStatesUndoedStack: any[] = [];
+	
 
-	//editor state
-	//refactored undo prep
+
+	//editor state management
 	interface editorState {
 		maskBrush: boolean[][];
 		maskSAM: boolean[][];
-		clickedPositions: { x: number; y: number; type: pointType }[];
+		clickedPositions: SAMmarker[];
 		imgData: ImageData;
 	}
 	let imgDataOriginal: ImageData;
 
-	let currentCursor: 'default' | 'brush' | 'eraser' = 'default';
+	let currentEditorState: editorState;
+	let editorStatesHistory: editorState[] = [];
+	//saved for potential redos after undo actions, emptied on new action after series of undos
+	let editorStatesUndoed: editorState[] = [];
 
+
+
+	let currentCursor: 'default' | 'brush' | 'eraser' = 'default';
 	//brush tool
 	let brushSize = 10;
 	let prevMouseX = 0;
@@ -128,6 +137,8 @@
 
 		//clean clicked positions
 		clickedPositions = [];
+		//new states management
+		editorStatesHistory = [];
 		let reader = new FileReader();
 		reader.onload = async (e) => {
 			imagebase64URL = e.target?.result as string;
@@ -183,6 +194,12 @@
 				}
 			};
 			uploadedImage = img;
+			currentEditorState = {
+				maskBrush: [],
+				maskSAM: [],
+				clickedPositions: [],
+				imgData: imgDataOriginal
+			};
 		};
 		isEmbedderRunning = true;
 		reader.readAsDataURL(uploadedImageFile);
@@ -266,7 +283,7 @@
 		const data = lastData[0][0];
 
 		//convert to bool array
-		const maskArray = data.map((val: number[]) => val.map((v) => v > -10.0));
+		const maskArray = data.map((val: number[]) => val.map((v) => v > 0.0));
 
 		//combine maskArray with current state mask with or
 		let maskArrayCombined;
@@ -280,6 +297,20 @@
 
 		drawMask(maskCanvas, maskArrayCombined);
 		masksStatesHistoryStack = [...masksStatesHistoryStack, maskArrayCombined];
+
+
+		//new state management
+		editorStatesHistory = [
+			...editorStatesHistory,
+			currentEditorState
+		];
+		currentEditorState = {
+			maskBrush: currentEditorState.maskBrush,
+			maskSAM: maskArrayCombined,
+			clickedPositions: currentEditorState.clickedPositions,
+			imgData: currentEditorState.imgData
+		};
+
 	}
 
 	//EDITOR HANDLING FUNCTIONS
@@ -302,9 +333,21 @@
 			y: yScaled,
 			type: event.button === 0 ? 'positive' : 'negative'
 		});
+
+		//new state management
+		editorStatesHistory = [
+			...editorStatesHistory,
+			currentEditorState
+		];
+		currentEditorState.clickedPositions = [...currentEditorState.clickedPositions, {
+			x: xScaled,
+			y: yScaled,
+			type: event.button === 0 ? 'positive' : 'negative'
+		} as SAMmarker];
+
 		//clear canvas
-		clearCanvas(imageCanvas);
-		drawImage(imageCanvas, imgDataOriginal);
+		// clearCanvas(imageCanvas);
+		// drawImage(imageCanvas, imgDataOriginal);
 		drawMarkers(imageCanvas, clickedPositions);
 	}
 	// function drawImage(canvas: HTMLCanvasElement, imageData: ImageData) {
@@ -362,6 +405,18 @@
 		} else {
 			clearCanvas(maskCanvas);
 		}
+
+
+		//new state management
+		if(editorStatesHistory.length > 0 && currentEditorState){
+			
+			editorStatesUndoed = [...editorStatesUndoed, currentEditorState];
+			currentEditorState = editorStatesHistory[editorStatesHistory.length - 1];
+			editorStatesHistory = editorStatesHistory.slice(0, -1);
+		}
+		
+		editorStatesHistory = editorStatesHistory.slice(0, -1);
+
 		// Redraw image with markers
 		//TODO refactor
 		drawImage(imageCanvas, imgDataOriginal);
@@ -378,6 +433,14 @@
 			// drawMask(maskCanvas, masksStatesHistoryStack[masksStatesHistoryStack.length - 1]);
 			// drawImageWithMarkers(imageCanvas);
 		}
+
+
+		//new state management
+		if(editorStatesUndoed.length > 0 && currentEditorState){
+			editorStatesHistory = [...editorStatesHistory, currentEditorState];
+			currentEditorState = editorStatesUndoed[editorStatesUndoed.length - 1];
+			editorStatesUndoed = editorStatesUndoed.slice(0, -1);
+		}
 	}
 
 	// brush tool
@@ -390,11 +453,23 @@
 
 	function stopPainting() {
 		isPainting = false;
-		let maskArray = createMaskArray(maskCanvas);
+		let maskArray: boolean[][] = createMaskArray(maskCanvas);
 		masksStatesHistoryStack = [...masksStatesHistoryStack, maskArray];
 		masksStatesUndoedStack = [];
 		// drawImageWithMarkers(imageCanvas);
 		// drawMask(maskCanvas, masksStatesStack[masksStatesStack.length - 1]);
+		//new state management
+		editorStatesHistory = [
+			...editorStatesHistory,
+			currentEditorState
+		];
+		currentEditorState = {
+			maskBrush: maskArray,
+			maskSAM: currentEditorState.maskSAM,
+			clickedPositions: currentEditorState.clickedPositions,
+			imgData: currentEditorState.imgData
+		};
+		editorStatesUndoed = [];
 	}
 	function handleEditorMouseMove(event: MouseEvent, canvas: HTMLCanvasElement) {
 		const x = event.offsetX * ImgResToCanvasSizeRatio;
@@ -449,13 +524,13 @@
 		return canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height);
 	}
 
-	function createMaskArray(maskCanvas: HTMLCanvasElement) {
+	function createMaskArray(maskCanvas: HTMLCanvasElement): boolean[][] {
 		const ctx = maskCanvas.getContext('2d', { willReadFrequently: true });
 		if (ctx) {
 			const imageData = ctx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
-			const maskArray: any = [];
+			const maskArray: boolean[][] = [];
 			for (let y = 0; y < maskCanvas.height; y++) {
-				const row = [];
+				const row: boolean[] = [];
 				for (let x = 0; x < maskCanvas.width; x++) {
 					const index = (y * maskCanvas.width + x) * 4; //RGBA
 					const alpha = imageData.data[index + 3]; // Alpha value indicates if the pixel is drawn to
@@ -465,6 +540,7 @@
 			}
 			return maskArray;
 		}
+		return [];
 	}
 
 	function handleBrushModeChange(event: any, maskCanvas: HTMLCanvasElement) {
@@ -536,16 +612,15 @@
 		return hwcBuffer;
 	}
 
-	function renderImageToCanvas(
+	function RGB_CHW_array_to_imageData(
 		imageDataRGB: Uint8Array,
-		canvas: HTMLCanvasElement,
 		img_height: number,
 		img_width: number
 	) {
 		// Create an ImageData object
-		const canvasContext = canvas.getContext('2d');
-		canvas.width = img_width;
-		canvas.height = img_height;
+		// const canvasContext = canvas.getContext('2d');
+		// canvas.width = img_width;
+		// canvas.height = img_height;
 		// Clear the canvas
 
 		let dataRGBBufferReshaped = reshapeCHWtoHWC(imageDataRGB, img_width, img_height);
@@ -561,8 +636,9 @@
 
 		// const reshaped = reshapeCHWtoHWC(imageData, img_width, img_height);
 		// Draw the ImageData onto the canvas
-		const imgdata = new ImageData(imgDataBuffer, img_width, img_height);
-		canvasContext?.putImageData(imgdata, 0, 0);
+		return new ImageData(imgDataBuffer, img_width, img_height);
+		
+		
 	}
 
 	async function runInpainting() {
@@ -594,11 +670,25 @@
 		const output = await onnxSessionMIGAN?.run({ image: imgNCHWTensor, mask: maskNCHWTensor });
 
 		if (output) {
-			inpaintedImgCanvas.width = imageCanvas.width;
-			inpaintedImgCanvas.height = imageCanvas.height;
+			// inpaintedImgCanvas.width = imageCanvas.width;
+			// inpaintedImgCanvas.height = imageCanvas.height;
+
 			// renderImageToCanvas(output['result'].data, inpaintedImgCanvas, imageCanvas.height, imageCanvas.width);
 			let result: Uint8Array = output['result'].data as Uint8Array;
-			renderImageToCanvas(result, inpaintedImgCanvas, imageCanvas.height, imageCanvas.width);
+			let resultImgData = RGB_CHW_array_to_imageData(result, imageCanvas.height, imageCanvas.width);
+			
+			editorStatesHistory = [
+				...editorStatesHistory,
+				currentEditorState
+			];
+			currentEditorState = {
+				maskBrush: [],
+				maskSAM: [],
+				clickedPositions: [],
+				imgData: resultImgData
+			};
+			let imgcanvascontext = imageCanvas.getContext('2d');
+			imgcanvascontext?.putImageData(resultImgData, 0, 0);
 		}
 	}
 
