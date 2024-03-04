@@ -51,20 +51,23 @@
 	let maskCanvas: any;
 	let isPainting = false;
 	let originalImgElement: HTMLImageElement;
+	let pixelsDilatation = 10;
+	
 	//OLD STATE MANAGEMENT
-	let masksStatesHistoryStack: any[] = [];
-	let masksStatesUndoedStack: any[] = [];
 	interface SAMmarker {
 		x: number;
 		y: number;
 		type: pointType;
 	}
+
+
 	// let clickedPositions: SAMmarker[] = [];
 
 	//editor state management
 	interface editorState {
 		maskBrush: boolean[][];
 		maskSAM: boolean[][];
+		maskSAMDilated: boolean[][];
 		clickedPositions: SAMmarker[];
 		imgData: ImageData;
 		currentImgEmbedding: tf.Tensor<tf.Rank> | undefined;
@@ -76,8 +79,6 @@
 	//saved for potential redos after undo actions, emptied on new action after series of undos
 	let editorStatesUndoed: editorState[] = [];
 
-	$: console.log(currentEditorState);
-	$: console.log(editorStatesHistory);
 	let currentCursor: 'default' | 'brush' | 'eraser' = 'default';
 	//brush tool
 	let brushSize = 10;
@@ -88,6 +89,16 @@
 	// let mouse: any;
 	let selectedBrushMode: 'brush' | 'eraser' = 'brush'; // Initial selected option
 	let selectedTool: 'brush' | 'segment_anything' = 'segment_anything';
+
+	function changeDilatation(){
+		if(currentEditorState){
+			currentEditorState.maskSAMDilated = dilateMaskByPixels(pixelsDilatation, currentEditorState.maskSAM);
+			renderEditorState(currentEditorState, imageCanvas, maskCanvas);
+		}
+	}
+
+	$: pixelsDilatation, console.log(pixelsDilatation),changeDilatation()
+
 	//EMBEDDING FUNCTIONS
 	async function getResizedImgRGBArray(
 		img: ImageData,
@@ -184,6 +195,9 @@
 							.fill(false)
 							.map(() => new Array(imgDataOriginal.width).fill(false)),
 						maskSAM: new Array(imgDataOriginal.height)
+							.fill(false)
+							.map(() => new Array(imgDataOriginal.width).fill(false)),
+						maskSAMDilated: new Array(imgDataOriginal.height)
 							.fill(false)
 							.map(() => new Array(imgDataOriginal.width).fill(false)),
 						clickedPositions: new Array<SAMmarker>(),
@@ -302,6 +316,9 @@
 		//convert to bool array
 		const SAMMaskArray = data.map((val: number[]) => val.map((v) => v > 0.0));
 		return SAMMaskArray;
+		// return dilateMaskByPixels(pixelsDilatation, SAMMaskArray);
+
+		// return SAMMaskArray;
 	}
 
 	//EDITOR HANDLING FUNCTIONS
@@ -322,6 +339,7 @@
 		currentEditorState = {
 			maskBrush: currentEditorState.maskBrush,
 			maskSAM: currentEditorState.maskSAM,
+			maskSAMDilated: currentEditorState.maskSAMDilated,
 			clickedPositions: new Array<SAMmarker>(...currentEditorState.clickedPositions, {
 				x: xScaled,
 				y: yScaled,
@@ -337,6 +355,7 @@
 			runModelDecoder(currentEditorState).then((sammask) => {
 				if (sammask) {
 					currentEditorState.maskSAM = sammask;
+					currentEditorState.maskSAMDilated = dilateMaskByPixels(pixelsDilatation, sammask);
 				}
 				renderEditorState(currentEditorState, imageCanvas, maskCanvas);
 				decoderLoading = false;
@@ -381,8 +400,6 @@
 
 	function reset() {
 		//clear all states
-		editorStatesHistory = [];
-		editorStatesUndoed = [];
 		currentEditorState = {
 			maskBrush: new Array(imgDataOriginal.height)
 				.fill(false)
@@ -390,10 +407,15 @@
 			maskSAM: new Array(imgDataOriginal.height)
 				.fill(false)
 				.map(() => new Array(imgDataOriginal.width).fill(false)),
+			maskSAMDilated: new Array(imgDataOriginal.height)
+				.fill(false)
+				.map(() => new Array(imgDataOriginal.width).fill(false)),
 			clickedPositions: [],
 			imgData: imgDataOriginal,
-			currentImgEmbedding: currentEditorState.currentImgEmbedding
+			currentImgEmbedding: editorStatesHistory[0].currentImgEmbedding 
 		};
+		editorStatesHistory = [];
+		editorStatesUndoed = [];
 		renderEditorState(currentEditorState, imageCanvas, maskCanvas);
 	}
 
@@ -413,6 +435,7 @@
 		currentEditorState = {
 			maskBrush: maskArray,
 			maskSAM: currentEditorState.maskSAM,
+			maskSAMDilated: currentEditorState.maskSAMDilated,
 			clickedPositions: currentEditorState.clickedPositions,
 			imgData: currentEditorState.imgData,
 			currentImgEmbedding: currentEditorState.currentImgEmbedding
@@ -616,7 +639,7 @@
 
 		//combine currentstate brushmask and sammask with or
 		let maskArrayCombined = currentEditorState.maskBrush.map((row: boolean[], y: number) =>
-			row.map((val, x) => val || currentEditorState.maskSAM[y][x])
+			row.map((val, x) => val || currentEditorState.maskSAMDilated[y][x])
 		);
 
 		let maskUInt8Buffer = booleanMaskToUint8Buffer(maskArrayCombined);
@@ -641,6 +664,9 @@
 				maskSAM: new Array(imageCanvas.height)
 					.fill(false)
 					.map(() => new Array(imageCanvas.width).fill(false)),
+				maskSAMDilated: new Array(imageCanvas.height)
+					.fill(false)
+					.map(() => new Array(imageCanvas.width).fill(false)),
 				clickedPositions: [],
 				imgData: resultImgData,
 				currentImgEmbedding: undefined
@@ -660,7 +686,7 @@
 		clearCanvas(maskCanvas);
 		drawImage(imageCanvas, state.imgData);
 		drawMarkers(imageCanvas, state.clickedPositions);
-		drawMask(imageCanvas, state.maskSAM, 0.5,false);
+		drawMask(imageCanvas, state.maskSAMDilated, 0.5,false);
 		drawMask(maskCanvas, state.maskBrush, 1,true);
 	}
 
@@ -738,6 +764,73 @@
 			URL.revokeObjectURL(url);
 		}, 'image/png');
 	}
+
+    // function dilateMaskByPixels(pixels: number, mask: boolean[][]): boolean[][] {
+    //     let dilatedMask = mask.map(row => row.slice());
+    //     for (let p = 0; p < pixels; p++) {
+    //         let tempMask = dilatedMask.map(row => row.slice());
+    //         for (let i = 0; i < dilatedMask.length; i++) {
+    //             for (let j = 0; j < dilatedMask[i].length; j++) {
+    //                 if (dilatedMask[i][j]) {
+    //                     // Applying dilation (considering direct neighbors for simplicity)
+    //                     [[-1, 0], [1, 0], [0, -1], [0, 1]].forEach(([dx, dy]) => {
+    //                         let x = i + dx, y = j + dy;
+    //                         if (x >= 0 && x < dilatedMask.length && y >= 0 && y < dilatedMask[i].length) {
+    //                             tempMask[x][y] = true;
+    //                         }
+    //                     });
+    //                 }
+    //             }
+    //         }
+    //         dilatedMask = tempMask;
+    //     }
+    //     return dilatedMask;
+    // }
+	type Point = { x: number; y: number };
+
+function dilateMaskByPixels(dilationPixels: number, mask: boolean[][]): boolean[][] {
+    const numRows = mask.length;
+    const numCols = mask[0].length;
+    const directions = [[-1, 0], [1, 0], [0, -1], [0, 1]]; // 4-way connectivity
+    let queue: Point[] = [];
+    let dilatedMask = mask.map(row => row.slice());
+
+    // Initialize the queue with the edge pixels
+    for (let i = 0; i < numRows; i++) {
+        for (let j = 0; j < numCols; j++) {
+            if (mask[i][j]) {
+                directions.forEach(([dx, dy]) => {
+                    const newX = i + dx;
+                    const newY = j + dy;
+                    if (newX >= 0 && newX < numRows && newY >= 0 && newY < numCols && !dilatedMask[newX][newY]) {
+                        dilatedMask[newX][newY] = true;
+                        queue.push({ x: newX, y: newY });
+                    }
+                });
+            }
+        }
+    }
+
+    // Perform dilation for the specified number of pixels
+    for (let p = 0; p < dilationPixels - 1; p++) { // -1 because we already did one dilation
+        let newQueue: Point[] = [];
+        while (queue.length > 0) {
+            const { x, y } = queue.shift()!;
+            directions.forEach(([dx, dy]) => {
+                const newX = x + dx;
+                const newY = y + dy;
+                if (newX >= 0 && newX < numRows && newY >= 0 && newY < numCols && !dilatedMask[newX][newY]) {
+                    dilatedMask[newX][newY] = true;
+                    newQueue.push({ x: newX, y: newY });
+                }
+            });
+        }
+        queue = newQueue;
+    }
+
+    return dilatedMask;
+}
+
 
 	//ONMOUNT MODELS LOADINGS FUNCTIONS
 	async function loadOnnxModel() {
@@ -833,7 +926,9 @@
 	<input type="range" min="1" max="500" bind:value={brushSize} />
 	<!-- <button on:click={() => switchToBrushDrawingMode(maskCanvas)}>Brush</button>
 	<button on:click={() => switchToBrushErasingMode(maskCanvas)}>Eraser</button> -->
-
+	<!-- range input for pixel dilatation -->
+	<label for="pixelsDilatation">Dilatation: {pixelsDilatation}</label>
+	<input type="range" min="0" max="25" bind:value={pixelsDilatation}/>
 	<div>
 		<label>
 			<input type="radio" bind:group={selectedTool} value="segment_anything" />
