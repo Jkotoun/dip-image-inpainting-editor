@@ -2,14 +2,49 @@
 	import { writable } from 'svelte/store';
 	//   import { goto } from '@sveltejs/kit';
 	import { goto } from '$app/navigation';
-    import { uploadedImgBase64, uploadedImgFileName } from '../stores';
-	// let uploadedImageData = writable("");
+	import { uploadedImgBase64, uploadedImgFileName } from '../stores';
+	import { FileDropzone } from '@skeletonlabs/skeleton';
+	import { FileUp } from 'lucide-svelte';
+
+	interface cardProps {
+		title: string;
+		description: string;
+		image: string;
+	}
+	let cards: cardProps[] = [
+		{
+			title: 'Step 1: Upload Your Image',
+			description:
+				'Upload or drag and drop an image into the “Upload Image” frame.',
+			image: '/img/process_part1.png'
+		},
+		{
+			title: 'Step 2: Select area you want to remove using AI selector and brush',
+			description:
+				'Specify one or more points of the object you want to select using smart selector tool. Alternatively, use a brush tool to select the whole area, or to refine area selected by smart selector.',
+			image: '/img/process_part2.png'
+		},
+		{
+			title: 'Step 3: Remove the area',
+			description:
+				'Click the “Inpaint” button and wait for the result.',
+			image: '/img/process_part3.png'
+		},
+		{
+			title: 'Step 4: Download the result image',
+			description:
+				'Compare the result with the original image and download the result image.',
+			image: '/img/process_part4.png'
+		}
+	];
 
 	const handleImageUpload = async (event: Event) => {
-        const files = (event.target as HTMLInputElement).files;
+		const files = (event.target as HTMLInputElement).files;
 		let uploadedImageFile = files?.[0];
 		if (!uploadedImageFile) return;
-		uploadedImgFileName.set(uploadedImageFile.name.substring(0, uploadedImageFile.name.lastIndexOf('.')))
+		uploadedImgFileName.set(
+			uploadedImageFile.name.substring(0, uploadedImageFile.name.lastIndexOf('.'))
+		);
 
 		let reader = new FileReader();
 		reader.onload = async (e) => {
@@ -24,11 +59,62 @@
 	};
 </script>
 
-<h1 class="text-3xl font-bold underline">
+<!-- <h1 class="text-3xl font-bold underline">
   Object remover
-</h1>
+</h1> -->
 <div>
-	<input type="file" accept="image/*" on:change={(e) => handleImageUpload(e)} />
+	<!-- <input type="file" accept="image/*" on:change={(e) => handleImageUpload(e)} /> -->
+	<div class="py-4 2xl:px-32 px-8">
+		<h1 class="h1 pt-8 font-bold">Remove objects from images with powerful AI tools</h1>
+		<h3 class="h3 pt-4">
+			Easily remove any unwanted objects, people, defects or text from images with help of
+			AI-powered tools
+		</h3>
+		<div class="pt-16 pb-8 flex flex-row gap-x-4">
+			<div class="flex-1">
+				<img src="/img/before_after_example.png" alt="before_after_exampler" />
+			</div>
+			<FileDropzone
+				class="flex-1"
+				name="files"
+				accept="image/*"
+				on:change={(e) => handleImageUpload(e)}
+			>
+				<svelte:fragment slot="lead">
+					<div class="flex justify-center">
+						<FileUp size={64} />
+					</div>
+				</svelte:fragment>
+				<svelte:fragment slot="message"
+					><span class="font-semibold">Upload an image or drag and drop</span></svelte:fragment
+				>
+				<!-- <svelte:fragment slot="meta"></svelte:fragment> -->
+			</FileDropzone>
+		</div>
+
+		<h2 class="h2 pt-8 text-center font-semibold">How does it work?</h2>
+		<div class="py-16">
+
+		
+
+			<div class="w-fit text-token grid grid-cols-1 xl:grid-cols-4 md:grid-cols-2 gap-4">
+				{#each cards as card}
+				<div class="card overflow-hidden">
+					<header>
+						<img src={card.image} class="bg-black/50 w-full h-64 object-cover" alt="Object removal process guide" />
+					</header>
+					<div class="p-8 space-y-4">
+						<h3 class="h3 font-semibold">{card.title}</h3>
+						<article>
+							<p>{card.description}</p>
+						</article>
+					</div>
+				</div>
+			{/each}
+		
+			</div>
+		</div>
+	</div>
 </div>
 <!-- <a href="/editor">Editor</a> -->
 <br />
