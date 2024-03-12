@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import * as tf from '@tensorflow/tfjs';
-
+	import Navbar from '../../components/Navbar.svelte';
 	import { uploadedImgBase64, uploadedImgFileName } from '../../stores';
 
 	// import { Tensor } from 'onnxruntime-web';
@@ -10,8 +10,8 @@
 	// import * as ort from 'onnxruntime-web/webgpu';
 	//models paths
 	const mobileSAMEncoderPath = '/mobile_sam.encoder.onnx';
-	// const mobileSAMDecoderPath = '/tfjs_decoder_mobile/model.json';
-	const mobileSAMDecoderPath = '/tfjs_tiny_decoder_quantized/model.json';
+	const mobileSAMDecoderPath = '/tfjs_decoder_mobile/model.json';
+	// const mobileSAMDecoderPath = '/tfjs_tiny_decoder_quantized/model.json';
 
 	const mobile_inpainting_GAN = '/migan_pipeline_v2.onnx';
 
@@ -991,6 +991,54 @@
 	});
 </script>
 
+
+<Navbar title="AI Object Remover" items={
+	[
+		{title: "Home", link: "/", selected:false},
+		{title: "About", link: "/about", selected:false},
+	]
+} />
+<!-- flexbox div -->
+<div>
+	<sidebar>
+		<!-- tools switch, UI lib component -->
+	</sidebar>
+	<!-- container with padding -->
+	<div>
+		<!-- buttons upper -->
+		<div>
+			<!-- undo/redo/reset -->
+			<div>
+				<div></div>
+				<div></div>
+				<div></div>
+			</div>
+			<!-- before,after,download -->
+			<div>
+				<div></div>
+				<div></div>
+				<div></div>
+			</div>
+		</div>
+		<!-- canvas -->
+		<div>
+		</div>
+		<!-- bottom buttons - zoom/move + remove button -->
+		<div>
+		</div>
+	</div>
+</div>
+
+
+
+
+<!-- 
+
+
+
+
+
+
 {#if isLoading}
 	<h3>Loading model...</h3>
 {:else if isEmbedderRunning}
@@ -999,12 +1047,9 @@
 	<p>All loaded</p>
 {/if}
 
-<h1>Editor</h1>
 
+<h1>Editor</h1>
 <button on:click={() => console.log(uploadedImage)}>log img</button>
-<!-- <div>
-	<input type="file" accept="image/*" on:change={(e) => handleFileInputChange(e)} />
-</div> -->
 <div style="display: {uploadedImage ? 'block' : 'none'}">
 	<div id="inpaintBtn">
 		<button
@@ -1018,24 +1063,13 @@
 	</div>
 	<canvas id="inpaintedImageTmp" bind:this={inpaintedImgCanvas} />
 
-	<!-- <button
-		on:click={async () => {
-			runModelDecoder(currentEditorState).then((newState) => {
-				if (!newState) return;
-				currentEditorState = newState;
-			});
-		}}
-		disabled={isEmbedderRunning}>Run Decoder</button
-	> -->
+
 	<button on:click={undoLastAction} disabled={editorStatesHistory.length === 0}>Undo</button>
 	<button on:click={redoLastAction} disabled={editorStatesUndoed.length === 0}>Redo</button>
 	<button on:click={reset}>Reset</button>
-	<!-- range slider to set brush size -->
 	<label for="brushSize">Brush size: {brushSize}</label>
 	<input type="range" min="1" max="500" bind:value={brushSize} />
-	<!-- <button on:click={() => switchToBrushDrawingMode(maskCanvas)}>Brush</button>
-	<button on:click={() => switchToBrushErasingMode(maskCanvas)}>Eraser</button> -->
-	<!-- range input for pixel dilatation -->
+
 	<label for="pixelsDilatation">Dilatation: {pixelsDilatation}</label>
 	<input type="range" min="0" max="25" bind:value={pixelsDilatation} />
 	<div>
@@ -1145,11 +1179,11 @@
 		/>
 		<img src={imagebase64URL} alt="originalImage" bind:this={originalImgElement} />
 	</div>
-</div>
+</div> -->
 
 <!-- TODO AI tool select -->
 
-<style>
+<!-- <style>
 	.canvases {
 		width: 60%;
 		position: relative;
@@ -1178,4 +1212,4 @@
 		z-index: 100;
 		transform: translate(-50%, -50%);
 	}
-</style>
+</style> -->
