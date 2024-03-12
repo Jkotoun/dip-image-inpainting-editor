@@ -24,7 +24,9 @@
 	};
 </script>
 
-<h1>AI object remover</h1>
+<h1 class="text-3xl font-bold underline">
+  Object remover
+</h1>
 <div>
 	<input type="file" accept="image/*" on:change={(e) => handleImageUpload(e)} />
 </div>
