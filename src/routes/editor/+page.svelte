@@ -992,12 +992,7 @@
 </script>
 
 
-<Navbar title="AI Object Remover" items={
-	[
-		{title: "Home", link: "/", selected:false},
-		{title: "About", link: "/about", selected:false},
-	]
-} />
+
 <!-- flexbox div -->
 <div>
 	<sidebar>
