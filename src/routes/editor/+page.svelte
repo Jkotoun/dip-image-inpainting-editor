@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import * as tf from '@tensorflow/tfjs';
-	import Navbar from '../../components/Navbar.svelte';
 	import { uploadedImgBase64, uploadedImgFileName } from '../../stores';
-
+	import { Brush, WandSparkles, Undo, Redo, RotateCw, Eraser, Download, HardDriveDownload, AlignCenter } from 'lucide-svelte';
 	// import { Tensor } from 'onnxruntime-web';
 
 	import * as ort from 'onnxruntime-web';
+	import { AppShell, Tab, TabGroup } from '@skeletonlabs/skeleton';
 	// import * as ort from 'onnxruntime-web/webgpu';
 	//models paths
 	const mobileSAMEncoderPath = '/mobile_sam.encoder.onnx';
@@ -55,6 +55,7 @@
 	// let uploadedImage: HTMLImageElement | null = null;
 	let ImgResToCanvasSizeRatio: number = 1;
 	let imageCanvas: any;
+	let canvasesContainer: any;
 	let maskCanvas: any;
 	let isPainting = false;
 	let originalImgElement: HTMLImageElement;
@@ -176,14 +177,14 @@
 						'70vh';
 			}
 			const canvasElementSize = imageCanvas.getBoundingClientRect();
+			canvasesContainer.style.height = `${canvasElementSize.height}px`;
 			ImgResToCanvasSizeRatio = img.width / canvasElementSize.width;
-
 			//render image
 			const ctx = imageCanvas.getContext('2d');
 			clearCanvas(imageCanvas);
 			ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, imageCanvas.width, imageCanvas.height);
-			
-			let imgDataOriginal = getImageData(imageCanvas);
+
+			imgDataOriginal = getImageData(imageCanvas);
 			//setup editor state
 			editorStatesHistory = [];
 			editorStatesUndoed = [];
@@ -202,18 +203,17 @@
 				currentImgEmbedding: undefined
 			} as editorState;
 
-
 			isEmbedderRunning = true;
 			//0s timeout to handle UI loading state
 			setTimeout(async () => {
-				currentEditorState.currentImgEmbedding = await runModelEncoder(onnxSession!, currentEditorState.imgData);
+				currentEditorState.currentImgEmbedding = await runModelEncoder(
+					onnxSession!,
+					currentEditorState.imgData
+				);
 				isEmbedderRunning = false;
 			}, 0);
-
 		};
 	};
-
-
 
 	// uploadedImage = img;
 
@@ -311,21 +311,20 @@
 		imageData: ImageData
 		// imgRGBData: loadedImgRGBData
 	): Promise<tf.Tensor<tf.Rank>> {
-			let resizedImgRGBData = await getResizedImgRGBArray(imageData, longSideLength);
-			// const input = new Float32Array(imgTensor.dataSync());
-			let floatArray = Float32Array.from(resizedImgRGBData.rgbArray);
-			const inputTensor = new ort.Tensor('float32', floatArray, [
-				resizedImgRGBData.height,
-				resizedImgRGBData.width,
-				3
-			]);
-			const output = await embedderOnnxSession.run({ input_image: inputTensor });
-			return tf.tensor(
-				output['image_embeddings'].data as any,
-				output['image_embeddings'].dims as any,
-				'float32'
-			);
-
+		let resizedImgRGBData = await getResizedImgRGBArray(imageData, longSideLength);
+		// const input = new Float32Array(imgTensor.dataSync());
+		let floatArray = Float32Array.from(resizedImgRGBData.rgbArray);
+		const inputTensor = new ort.Tensor('float32', floatArray, [
+			resizedImgRGBData.height,
+			resizedImgRGBData.width,
+			3
+		]);
+		const output = await embedderOnnxSession.run({ input_image: inputTensor });
+		return tf.tensor(
+			output['image_embeddings'].data as any,
+			output['image_embeddings'].dims as any,
+			'float32'
+		);
 	}
 
 	//DECODER MODEL FUNCTIONS
@@ -723,11 +722,10 @@
 		]);
 
 		const output = await onnxSessionMIGAN?.run({ image: imgNCHWTensor, mask: maskNCHWTensor });
-	
+
 		let result: Uint8Array = output!['result'].data as Uint8Array;
 		let resultImgData = RGB_CHW_array_to_imageData(result, imageCanvas.height, imageCanvas.width);
-		return resultImgData
-		
+		return resultImgData;
 	}
 
 	function renderEditorState(
@@ -800,7 +798,7 @@
 		}
 	}
 
-	function setInpaintedImgEditorState(inpaintedImgData: ImageData){
+	function setInpaintedImgEditorState(inpaintedImgData: ImageData) {
 		editorStatesHistory = [...editorStatesHistory, currentEditorState];
 		let newEditorState: editorState = {
 			maskBrush: new Array(imageCanvas.height)
@@ -815,9 +813,8 @@
 			clickedPositions: [],
 			imgData: inpaintedImgData,
 			currentImgEmbedding: undefined
-		} ;
+		};
 		renderEditorState(newEditorState, imageCanvas, maskCanvas);
-
 
 		isEmbedderRunning = true;
 
@@ -977,212 +974,170 @@
 		await loadOnnxModels();
 		model = await tf.loadGraphModel(mobileSAMDecoderPath);
 		uploadedImage = $uploadedImgBase64;
-	
+
 		if (!uploadedImage) {
 			return;
 		}
-		if(!onnxSession || !onnxSessionMIGAN){
+		if (!onnxSession || !onnxSessionMIGAN) {
 			console.error('models not loaded');
 			return;
+		} else {
+			console.log('model loaded');
 		}
 		isLoading = false;
 		setupEditor(uploadedImage, $uploadedImgFileName);
-
 	});
 </script>
 
+<AppShell>
+	<div slot="sidebarLeft">
+		<TabGroup>
+			<Tab class="px-8 py-4" bind:group={selectedTool} name="segment_anything" value="segment_anything">
+				<span class="flex gap-x-2 items-center"> <WandSparkles size={18} /> Smart selector</span>
+			</Tab>
+			<Tab class="px-8 py-4" bind:group={selectedTool} name="brush" value="brush">
+				<span class="flex gap-x-2 items-center"> <Brush size={18} /> Brush</span>
+			</Tab>
 
+			<div slot="panel" class="p-4">
+				{#if selectedTool === 'brush'}
+					<div>
+						<label>
+							<input
+								type="radio"
+								bind:group={selectedBrushMode}
+								value="brush"
+								on:change={(e) => handleBrushModeChange(e, maskCanvas)}
+							/>
+							Brush <Brush/>
+						</label>
+						<label>
+							<input
+								type="radio"
+								bind:group={selectedBrushMode}
+								value="eraser"
+								on:change={(e) => handleBrushModeChange(e, maskCanvas)}
+							/>
+							Eraser <Eraser/>
+						</label>
 
-<!-- flexbox div -->
-<div>
-	<sidebar>
-		<!-- tools switch, UI lib component -->
-	</sidebar>
-	<!-- container with padding -->
-	<div>
-		<!-- buttons upper -->
-		<div>
-			<!-- undo/redo/reset -->
-			<div>
-				<div></div>
-				<div></div>
-				<div></div>
+						<label for="brushSize">Brush size: {brushSize}</label>
+						<input type="range" min="1" max="500" bind:value={brushSize} />
+					</div>
+				{:else if selectedTool === 'segment_anything'}
+					<label for="pixelsDilatation">Dilatation: {pixelsDilatation}</label>
+					<input type="range" min="0" max="25" bind:value={pixelsDilatation} />
+				{/if}
 			</div>
-			<!-- before,after,download -->
-			<div>
-				<div></div>
-				<div></div>
-				<div></div>
+		</TabGroup>
+	</div>
+	<div class="px-64 py-8">
+		{#if isLoading}
+			<h3>Loading model...</h3>
+		{:else if isEmbedderRunning}
+			<h3>Running embedder...</h3>
+		{/if}
+		<!-- top buttons panel -->
+		<div class="flex py-2 justify-between ">
+			<!-- left buttons -->
+			<div class="flex gap-x-2">
+				<button
+					class="btn variant-filled"
+					on:click={undoLastAction}
+					disabled={editorStatesHistory.length === 0}><Undo/></button
+				>
+				<button
+					class="btn variant-filled"
+					on:click={redoLastAction}
+					disabled={editorStatesUndoed.length === 0}><Redo/></button
+				>
+				<button class="btn variant-filled" on:click={reset}><RotateCw/></button>
+			</div>
+			<!-- right buttons -->
+			<div class="flex gap-x-2">
+				<div
+					role="button"
+					tabindex="0"
+					class="btn variant-filled"
+					on:mousedown={() => {
+						maskCanvas.style.display = 'none';
+						imageCanvas.style.display = 'none';
+						originalImgElement.style.display = 'block';
+					}}
+					on:mouseup={() => {
+						maskCanvas.style.display = 'block';
+						imageCanvas.style.display = 'block';
+						originalImgElement.style.display = 'none';
+					}}
+				>
+					Hold to compare
+				</div>
+				<button
+					class="btn variant-filled"
+					on:click={() => downloadImage(currentEditorState.imgData)}> <span class="flex gap-x-2 items-center"><HardDriveDownload size={18}/> Download </span> </button
+				>
 			</div>
 		</div>
-		<!-- canvas -->
-		<div>
-		</div>
-		<!-- bottom buttons - zoom/move + remove button -->
-		<div>
-		</div>
-	</div>
-</div>
-
-
-
-
-<!-- 
-
-
-
-
-
-
-{#if isLoading}
-	<h3>Loading model...</h3>
-{:else if isEmbedderRunning}
-	<h3>Running embedder...</h3>
-{:else}
-	<p>All loaded</p>
-{/if}
-
-
-<h1>Editor</h1>
-<button on:click={() => console.log(uploadedImage)}>log img</button>
-<div style="display: {uploadedImage ? 'block' : 'none'}">
-	<div id="inpaintBtn">
-		<button
-			on:click={async () => {
-				let resultImgData = await runInpainting(currentEditorState);
-				setInpaintedImgEditorState(resultImgData);
-				
-				
-			}}>Inpaint</button
-		>
-	</div>
-	<canvas id="inpaintedImageTmp" bind:this={inpaintedImgCanvas} />
-
-
-	<button on:click={undoLastAction} disabled={editorStatesHistory.length === 0}>Undo</button>
-	<button on:click={redoLastAction} disabled={editorStatesUndoed.length === 0}>Redo</button>
-	<button on:click={reset}>Reset</button>
-	<label for="brushSize">Brush size: {brushSize}</label>
-	<input type="range" min="1" max="500" bind:value={brushSize} />
-
-	<label for="pixelsDilatation">Dilatation: {pixelsDilatation}</label>
-	<input type="range" min="0" max="25" bind:value={pixelsDilatation} />
-	<div>
-		<label>
-			<input type="radio" bind:group={selectedTool} value="segment_anything" />
-			AI object selector
-		</label>
-		<label>
-			<input type="radio" bind:group={selectedTool} value="brush" />
-			Brush
-		</label>
-	</div>
-
-	{#if selectedTool === 'brush'}
-		<div>
-			<label>
-				<input
-					type="radio"
-					bind:group={selectedBrushMode}
-					value="brush"
-					on:change={(e) => handleBrushModeChange(e, maskCanvas)}
-				/>
-				Brush
-			</label>
-			<label>
-				<input
-					type="radio"
-					bind:group={selectedBrushMode}
-					value="eraser"
-					on:change={(e) => handleBrushModeChange(e, maskCanvas)}
-				/>
-				Eraser
-			</label>
-		</div>
-	{/if}
-	<div
-		role="button"
-		tabindex="0"
-		style="background-color: {isEmbedderRunning || decoderLoading ? '#dedede' : '#599CFF'};
-			padding:5px 10px;
-			width:100px;
-			cursor: pointer;
-			border-radius: 5px;
-			color:white;
-			"
-		on:mousedown={() => {
-			maskCanvas.style.display = 'none';
-			imageCanvas.style.display = 'none';
-			originalImgElement.style.display = 'block';
-		}}
-		on:mouseup={() => {
-			maskCanvas.style.display = 'block';
-			imageCanvas.style.display = 'block';
-			originalImgElement.style.display = 'none';
-		}}
-	>
-		Hold to compare
-	</div>
-	<div>
-		<button on:click={() => downloadImage(currentEditorState.imgData)}>Download Image</button>
-	</div>
-	{#if decoderLoading}
-		<h3>running decoder...</h3>
-	{:else}
-		<h3>all loaded</h3>
-	{/if}
-
-	<div
-		class="canvases"
-		on:mouseenter={showBrushCursor}
-		on:mouseleave={hideBrushCursor}
-		style="cursor: {selectedTool === 'segment_anything'
-			? 'default'
-			: currentCursor === 'default'
-			? 'auto'
-			: 'none'}"
-		role="group"
-	>
+		<!-- editor canvases-->
 		<div
-			id="brushToolCursor"
-			style="
-			display: {selectedTool === 'segment_anything'
-				? 'none'
+			class="canvases"
+			bind:this={canvasesContainer}
+			on:mouseenter={showBrushCursor}
+			on:mouseleave={hideBrushCursor}
+			style="cursor: {selectedTool === 'segment_anything'
+				? 'default'
 				: currentCursor === 'default'
-				? 'none'
-				: 'block'};
+				? 'auto'
+				: 'none'}"
+			role="group"
+		>
+			<div
+				id="brushToolCursor"
+				style="
+			display: {selectedTool === 'segment_anything'
+					? 'none'
+					: currentCursor === 'default'
+					? 'none'
+					: 'block'};
 			width: {brushSize}px;
 			height: {brushSize}px;
 			left: {currentCanvasRelativeX}px;
 			top: {currentCanvasRelativeY}px;
 			background-color: {selectedBrushMode === 'brush' ? '#599cff' : '#f5f5f5'};
 			opacity: {isPainting ? 0.5 : 0.3};
-
+	
 		"
-		/>
-		<canvas id="imageCanvas" bind:this={imageCanvas} />
-
-		<canvas
-			id="maskCanvas"
-			bind:this={maskCanvas}
-			on:mousedown={selectedTool === 'brush' ? startPainting : undefined}
-			on:mouseup={selectedTool === 'brush' ? stopPainting : undefined}
-			on:mousemove={(event) =>
-				selectedTool === 'brush' ? handleEditorMouseMove(event, maskCanvas) : undefined}
-			on:click={selectedTool === 'segment_anything' ? async (e) => handleCanvasClick(e) : undefined}
-			on:contextmenu={selectedTool === 'segment_anything' ? handleCanvasClick : undefined}
-		/>
-		<img src={imagebase64URL} alt="originalImage" bind:this={originalImgElement} />
+			/>
+			<canvas id="imageCanvas" bind:this={imageCanvas} />
+			<canvas
+				id="maskCanvas"
+				bind:this={maskCanvas}
+				on:mousedown={selectedTool === 'brush' ? startPainting : undefined}
+				on:mouseup={selectedTool === 'brush' ? stopPainting : undefined}
+				on:mousemove={(event) =>
+					selectedTool === 'brush' ? handleEditorMouseMove(event, maskCanvas) : undefined}
+				on:click={selectedTool === 'segment_anything'
+					? async (e) => handleCanvasClick(e)
+					: undefined}
+				on:contextmenu={selectedTool === 'segment_anything' ? handleCanvasClick : undefined}
+			/>
+			<img src={$uploadedImgBase64} alt="originalImage" bind:this={originalImgElement} />
+		</div>
+		<!-- bottom buttons -->
+		<div class="flex justify-end py-2">
+			<!-- todo move/zoom control panel -->
+			<div></div>
+			<button
+				class="btn variant-filled"
+				on:click={async () => {
+					let resultImgData = await runInpainting(currentEditorState);
+					setInpaintedImgEditorState(resultImgData);
+				}}> <span class="flex gap-x-2 items-center"><WandSparkles size={18}/> Remove </span></button>
+		</div>
 	</div>
-</div> -->
+</AppShell>
 
-<!-- TODO AI tool select -->
-
-<!-- <style>
-	.canvases {
-		width: 60%;
-		position: relative;
-	}
+<style>
 	.canvases canvas,
 	.canvases img {
 		position: absolute;
@@ -1192,13 +1147,12 @@
 		display: block;
 		box-shadow: 0 0 10px 0 rgba(0, 0, 0, 0.2);
 	}
-	.canvases img {
-		display: none;
-	}
 	.canvases #maskCanvas {
 		opacity: 0.5;
 	}
-
+	.canvases {
+		position: relative;
+	}
 	#brushToolCursor {
 		position: absolute;
 		overflow: hidden;
@@ -1207,4 +1161,8 @@
 		z-index: 100;
 		transform: translate(-50%, -50%);
 	}
-</style> -->
+
+	.canvases img {
+		display: none;
+	}
+</style>

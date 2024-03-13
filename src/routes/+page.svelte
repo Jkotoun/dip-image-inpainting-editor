@@ -19,7 +19,7 @@
 			image: '/img/process_part1.png'
 		},
 		{
-			title: 'Step 2: Select area you want to remove using AI selector and brush',
+			title: 'Step 2: Select area you want to remove using smart selector tool or brush',
 			description:
 				'Specify one or more points of the object you want to select using smart selector tool. Alternatively, use a brush tool to select the whole area, or to refine area selected by smart selector.',
 			image: '/img/process_part2.png'
@@ -27,7 +27,7 @@
 		{
 			title: 'Step 3: Remove the area',
 			description:
-				'Click the “Inpaint” button and wait for the result.',
+				'Click the “Remove” button and wait for the result.',
 			image: '/img/process_part3.png'
 		},
 		{
