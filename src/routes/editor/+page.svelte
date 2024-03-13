@@ -2,11 +2,26 @@
 	import { onMount } from 'svelte';
 	import * as tf from '@tensorflow/tfjs';
 	import { uploadedImgBase64, uploadedImgFileName } from '../../stores';
-	import { Brush, WandSparkles, Undo, Redo, RotateCw, Eraser, Download, HardDriveDownload, AlignCenter } from 'lucide-svelte';
+	import {
+		Brush,
+		WandSparkles,
+		Undo,
+		Redo,
+		RotateCw,
+		Eraser,
+		Download,
+		HardDriveDownload,
+		AlignCenter,
+		Plus,
+		Minus,
+		PlusCircle,
+		PlusCircleIcon,
+		MinusCircle
+	} from 'lucide-svelte';
 	// import { Tensor } from 'onnxruntime-web';
 
 	import * as ort from 'onnxruntime-web';
-	import { AppShell, Tab, TabGroup } from '@skeletonlabs/skeleton';
+	import { AppShell, RadioGroup, RadioItem, Tab, TabGroup } from '@skeletonlabs/skeleton';
 	// import * as ort from 'onnxruntime-web/webgpu';
 	//models paths
 	const mobileSAMEncoderPath = '/mobile_sam.encoder.onnx';
@@ -96,6 +111,23 @@
 	// let mouse: any;
 	let selectedBrushMode: 'brush' | 'eraser' = 'brush'; // Initial selected option
 	let selectedTool: 'brush' | 'segment_anything' = 'segment_anything';
+	let selectedSAMMode: 'positive' | 'negative' = 'positive';
+	// let beforeAfterMode: 'before' | 'after' = 'after';
+	// $: handleBeforeAfterSwitch(beforeAfterMode);
+
+	// function handleBeforeAfterSwitch(mode: 'before' | 'after') {
+	// 		if(maskCanvas && imageCanvas && originalImgElement){
+	// 			if (mode === 'before') {
+	// 				maskCanvas.style.display = 'none';
+	// 				imageCanvas.style.display = 'none';
+	// 				originalImgElement.style.display = 'block';
+	// 			} else if (mode === 'after') {
+	// 				maskCanvas.style.display = 'block';
+	// 				imageCanvas.style.display = 'block';
+	// 				originalImgElement.style.display = 'none';
+	// 			}
+	// 		}
+	// }
 
 	function changeDilatation(pixelsDilatation: number) {
 		if (currentEditorState) {
@@ -414,7 +446,8 @@
 			clickedPositions: new Array<SAMmarker>(...currentEditorState.clickedPositions, {
 				x: xScaled,
 				y: yScaled,
-				type: event.button === 0 ? 'positive' : 'negative'
+				// type: event.button === 0 ? 'positive' : 'negative'
+				type: selectedSAMMode
 			}),
 			imgData: currentEditorState.imgData,
 			currentImgEmbedding: currentEditorState.currentImgEmbedding
@@ -987,12 +1020,18 @@
 		isLoading = false;
 		setupEditor(uploadedImage, $uploadedImgFileName);
 	});
+
 </script>
 
 <AppShell>
-	<div slot="sidebarLeft">
+	<div slot="sidebarLeft" class="max-w-80 h-full shadow-md">
 		<TabGroup>
-			<Tab class="px-8 py-4" bind:group={selectedTool} name="segment_anything" value="segment_anything">
+			<Tab
+				class="px-8 py-4"
+				bind:group={selectedTool}
+				name="segment_anything"
+				value="segment_anything"
+			>
 				<span class="flex gap-x-2 items-center"> <WandSparkles size={18} /> Smart selector</span>
 			</Tab>
 			<Tab class="px-8 py-4" bind:group={selectedTool} name="brush" value="brush">
@@ -1002,7 +1041,7 @@
 			<div slot="panel" class="p-4">
 				{#if selectedTool === 'brush'}
 					<div>
-						<label>
+						<!-- <label>
 							<input
 								type="radio"
 								bind:group={selectedBrushMode}
@@ -1019,13 +1058,51 @@
 								on:change={(e) => handleBrushModeChange(e, maskCanvas)}
 							/>
 							Eraser <Eraser/>
-						</label>
+						</label> -->
+
+						<label for="brushtoolselect" class="font-semibold">Select tool:</label>
+						<div class="font-thin">
+							Select brush or eraser tool to mark the area you want to remove
+						</div>
+						<RadioGroup class="text-token mb-4" id="brushtoolselect">
+							<RadioItem
+								bind:group={selectedBrushMode}
+								on:change={(e) => handleBrushModeChange(e, maskCanvas)}
+								name="brushtool"
+								value="brush"
+							>
+								<Brush size={18} />
+							</RadioItem>
+							<RadioItem
+								bind:group={selectedBrushMode}
+								on:change={(e) => handleBrushModeChange(e, maskCanvas)}
+								name="brushtool"
+								value="eraser"
+							>
+								<Eraser size={18} />
+							</RadioItem>
+						</RadioGroup>
 
 						<label for="brushSize">Brush size: {brushSize}</label>
 						<input type="range" min="1" max="500" bind:value={brushSize} />
 					</div>
 				{:else if selectedTool === 'segment_anything'}
-					<label for="pixelsDilatation">Dilatation: {pixelsDilatation}</label>
+					<label for="sammodeselect" class="font-semibold">Select smart selector mode:</label>
+					<div class="font-thin">
+						Add positive (adds area) or negative (removes area) points for selection
+					</div>
+					<RadioGroup id="sammodeselect" class="text-token mb-4">
+						<RadioItem bind:group={selectedSAMMode} name="sammode" value="positive">
+							<PlusCircleIcon size={18} />
+						</RadioItem>
+						<RadioItem bind:group={selectedSAMMode} name="sammode" value="negative">
+							<MinusCircle size={18} />
+						</RadioItem>
+					</RadioGroup>
+					<label for="pixelsDilatation">Mask dilatation: {pixelsDilatation}</label>
+					<div class="font-thin">
+						For best results, all edges of object should be inside the mask
+					</div>
 					<input type="range" min="0" max="25" bind:value={pixelsDilatation} />
 				{/if}
 			</div>
@@ -1038,20 +1115,20 @@
 			<h3>Running embedder...</h3>
 		{/if}
 		<!-- top buttons panel -->
-		<div class="flex py-2 justify-between ">
+		<div class="flex py-2 justify-between">
 			<!-- left buttons -->
 			<div class="flex gap-x-2">
 				<button
 					class="btn variant-filled"
 					on:click={undoLastAction}
-					disabled={editorStatesHistory.length === 0}><Undo/></button
+					disabled={editorStatesHistory.length === 0}><Undo /></button
 				>
 				<button
 					class="btn variant-filled"
 					on:click={redoLastAction}
-					disabled={editorStatesUndoed.length === 0}><Redo/></button
+					disabled={editorStatesUndoed.length === 0}><Redo /></button
 				>
-				<button class="btn variant-filled" on:click={reset}><RotateCw/></button>
+				<button class="btn variant-filled" on:click={reset}><RotateCw /></button>
 			</div>
 			<!-- right buttons -->
 			<div class="flex gap-x-2">
@@ -1072,10 +1149,21 @@
 				>
 					Hold to compare
 				</div>
+				<!-- <RadioGroup class="text-token">
+					<RadioItem bind:group={beforeAfterMode} name="before_after" value="before">
+						Before
+					</RadioItem>
+					<RadioItem bind:group={beforeAfterMode} name="before_after" value="after">
+						After
+					</RadioItem>
+				</RadioGroup> -->
+
 				<button
 					class="btn variant-filled"
-					on:click={() => downloadImage(currentEditorState.imgData)}> <span class="flex gap-x-2 items-center"><HardDriveDownload size={18}/> Download </span> </button
+					on:click={() => downloadImage(currentEditorState.imgData)}
 				>
+					<span class="flex gap-x-2 items-center"><HardDriveDownload size={18} /> Download </span>
+				</button>
 			</div>
 		</div>
 		<!-- editor canvases-->
@@ -1126,13 +1214,16 @@
 		<!-- bottom buttons -->
 		<div class="flex justify-end py-2">
 			<!-- todo move/zoom control panel -->
-			<div></div>
+			<div />
 			<button
-				class="btn variant-filled"
+				class="btn btn-xl variant-filled-primary text-white font-semibold"
 				on:click={async () => {
 					let resultImgData = await runInpainting(currentEditorState);
 					setInpaintedImgEditorState(resultImgData);
-				}}> <span class="flex gap-x-2 items-center"><WandSparkles size={18}/> Remove </span></button>
+				}}
+			>
+				<span class="flex gap-x-2 items-center"><WandSparkles size={18} /> Remove </span></button
+			>
 		</div>
 	</div>
 </AppShell>
