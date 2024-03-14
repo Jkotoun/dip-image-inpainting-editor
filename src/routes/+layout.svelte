@@ -8,7 +8,7 @@
 
 
 <!-- svelte-ignore missing-declaration -->
-<AppShell>
+<AppShell >
 	<svelte:fragment slot="header">
 		<AppBar>
 			<svelte:fragment slot="lead">
@@ -29,3 +29,6 @@
 	<slot  />
 </AppShell>
 
+<style>
+
+</style>

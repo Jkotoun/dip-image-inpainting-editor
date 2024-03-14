@@ -112,6 +112,9 @@
 	let selectedBrushMode: 'brush' | 'eraser' = 'brush'; // Initial selected option
 	let selectedTool: 'brush' | 'segment_anything' = 'segment_anything';
 	let selectedSAMMode: 'positive' | 'negative' = 'positive';
+
+
+	
 	// let beforeAfterMode: 'before' | 'after' = 'after';
 	// $: handleBeforeAfterSwitch(beforeAfterMode);
 
@@ -209,7 +212,7 @@
 						'70vh';
 			}
 			const canvasElementSize = imageCanvas.getBoundingClientRect();
-			canvasesContainer.style.height = `${canvasElementSize.height}px`;
+			// canvasesContainer.style.height = `${canvasElementSize.height}px`;
 			ImgResToCanvasSizeRatio = img.width / canvasElementSize.width;
 			//render image
 			const ctx = imageCanvas.getContext('2d');
@@ -475,7 +478,7 @@
 		const canvasContext = canvas.getContext('2d');
 		if (!canvasContext) return;
 		for (const pos of clickedPositions) {
-			canvasContext.fillStyle = pos.type === 'positive' ? 'green' : 'red';
+			canvasContext.fillStyle = pos.type === 'positive' ? '#021ded' : 'red';
 			canvasContext.beginPath();
 			canvasContext.arc(pos.x, pos.y, 5 * ImgResToCanvasSizeRatio, 0, Math.PI * 2);
 			canvasContext.fill();
@@ -811,7 +814,7 @@
 			}
 			const prevMode = maskCanvasctx.globalCompositeOperation;
 			maskCanvasctx.globalCompositeOperation = 'source-over';
-			maskCanvasctx.fillStyle = `rgba(89, 156, 255, ${opacity})`;
+			maskCanvasctx.fillStyle = `rgba(64, 141, 255, ${opacity})`;
 
 			for (let y = 0; y < maskArray.length; y++) {
 				for (let x = 0; x < maskArray[y].length; x++) {
@@ -989,6 +992,10 @@
 			if (imageCanvas) {
 				const canvasElementSize = imageCanvas.getBoundingClientRect();
 				ImgResToCanvasSizeRatio = imageCanvas.width / canvasElementSize.width;
+				// canvasesContainer.style.height = `${canvasElementSize.height}px`;
+
+
+
 			}
 		});
 		await tf.ready();
@@ -1023,8 +1030,10 @@
 
 </script>
 
-<AppShell>
-	<div slot="sidebarLeft" class="max-w-80 h-full shadow-md">
+<AppShell slotSidebarLeft="overflow-visible max-w-80 h-full shadow-md">
+	<!-- class="max-w-80 h-full shadow-md" -->
+	<svelte:fragment slot="sidebarLeft"
+	 >
 		<TabGroup>
 			<Tab
 				class="px-8 py-4"
@@ -1107,15 +1116,15 @@
 				{/if}
 			</div>
 		</TabGroup>
-	</div>
-	<div class="px-64 py-8">
+	</svelte:fragment>
+	<div class="px-64 py-4">
 		{#if isLoading}
 			<h3>Loading model...</h3>
 		{:else if isEmbedderRunning}
 			<h3>Running embedder...</h3>
 		{/if}
 		<!-- top buttons panel -->
-		<div class="flex py-2 justify-between">
+		<div class="flex pb-4 justify-between">
 			<!-- left buttons -->
 			<div class="flex gap-x-2">
 				<button
@@ -1168,7 +1177,8 @@
 		</div>
 		<!-- editor canvases-->
 		<div
-			class="canvases"
+
+			class="canvases shadow-lg"
 			bind:this={canvasesContainer}
 			on:mouseenter={showBrushCursor}
 			on:mouseleave={hideBrushCursor}
@@ -1187,12 +1197,13 @@
 					: currentCursor === 'default'
 					? 'none'
 					: 'block'};
-			width: {brushSize}px;
-			height: {brushSize}px;
+			width: {brushSize-2}px;
+			height: {brushSize-2}px;
 			left: {currentCanvasRelativeX}px;
 			top: {currentCanvasRelativeY}px;
-			background-color: {selectedBrushMode === 'brush' ? '#599cff' : '#f5f5f5'};
-			opacity: {isPainting ? 0.5 : 0.3};
+			background-color: {selectedBrushMode === 'brush' ? '#408dff' : '#f5f5f5'};
+			border: 1px solid #0261ed;
+			opacity: {isPainting ? 0.6 : 0.5};
 	
 		"
 			/>
@@ -1212,8 +1223,7 @@
 			<img src={$uploadedImgBase64} alt="originalImage" bind:this={originalImgElement} />
 		</div>
 		<!-- bottom buttons -->
-		<div class="flex justify-end py-2">
-			<!-- todo move/zoom control panel -->
+		<div class="flex justify-end pt-2">
 			<div />
 			<button
 				class="btn btn-xl variant-filled-primary text-white font-semibold"
@@ -1231,15 +1241,18 @@
 <style>
 	.canvases canvas,
 	.canvases img {
-		position: absolute;
 		inset: 0;
 		width: 100%;
 		height: 100%;
 		display: block;
-		box-shadow: 0 0 10px 0 rgba(0, 0, 0, 0.2);
+	}
+	.canvases img,
+	.canvases #maskCanvas{
+		position: absolute;
 	}
 	.canvases #maskCanvas {
 		opacity: 0.5;
+		/* box-shadow: 0 0 10px 0 rgba(0, 0, 0, 0.2); */
 	}
 	.canvases {
 		position: relative;
@@ -1252,8 +1265,8 @@
 		z-index: 100;
 		transform: translate(-50%, -50%);
 	}
-
 	.canvases img {
 		display: none;
 	}
+
 </style>
