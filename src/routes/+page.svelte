@@ -3,7 +3,7 @@
 	//   import { goto } from '@sveltejs/kit';
 	import { goto } from '$app/navigation';
 	import { uploadedImgBase64, uploadedImgFileName } from '../stores';
-	import { FileDropzone } from '@skeletonlabs/skeleton';
+	import { AppBar, AppShell, FileDropzone, LightSwitch } from '@skeletonlabs/skeleton';
 	import { FileUp } from 'lucide-svelte';
 
 	interface cardProps {
@@ -62,6 +62,23 @@
 <!-- <h1 class="text-3xl font-bold underline">
   Object remover
 </h1> -->
+
+<AppShell>
+	<svelte:fragment slot="header">
+		<AppBar>
+			<svelte:fragment slot="lead">
+				<a href="/" class="font-bold">Smart Object remover</a>
+			</svelte:fragment>
+			<svelte:fragment  slot="trail">
+				<a href="/" class="font-semibold">Home</a>
+				<a href="/about" class="font-semibold">About</a>
+				<LightSwitch />
+			</svelte:fragment>
+		</AppBar>
+	</svelte:fragment>
+
+
+
 <div>
 	<!-- <input type="file" accept="image/*" on:change={(e) => handleImageUpload(e)} /> -->
 	<div class="py-4 2xl:px-32 px-8">
@@ -70,7 +87,7 @@
 			Easily remove any unwanted objects, people, defects or text from images with help of
 			AI-powered tools
 		</h3>
-		<div class="pt-16 pb-8 flex flex-row gap-x-4">
+		<div class="md:pt-16 pt-4 flex md:flex-row flex-col-reverse gap-4">
 			<div class="flex-1">
 				<img src="/img/before_after_example.png" alt="before_after_exampler" />
 			</div>
@@ -92,8 +109,8 @@
 			</FileDropzone>
 		</div>
 
-		<h2 class="h2 pt-8 text-center font-semibold">How does it work?</h2>
-		<div class="py-16">
+		<h2 class="h2 md:pt-16 md:pb-16 pt-8 pb-8 text-center font-semibold">How does it work?</h2>
+		<div class="">
 
 		
 
@@ -116,5 +133,4 @@
 		</div>
 	</div>
 </div>
-<!-- <a href="/editor">Editor</a> -->
-<br />
+</AppShell>

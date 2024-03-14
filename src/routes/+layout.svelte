@@ -7,8 +7,10 @@
 </script>
 
 
+<slot/>
+
 <!-- svelte-ignore missing-declaration -->
-<AppShell >
+<!-- <AppShell >
 	<svelte:fragment slot="header">
 		<AppBar>
 			<svelte:fragment slot="lead">
@@ -21,14 +23,9 @@
 			</svelte:fragment>
 		</AppBar>
 	</svelte:fragment>
-	<!-- <svelte:fragment slot="footer">
-		<p class="text-center text-sm font-semibold">
-			© 2024 Smart Object Remover
-		</p>
-	</svelte:fragment> -->
 	<slot  />
-</AppShell>
-
+</AppShell> -->
+<!-- 
 <style>
 
-</style>
+</style> -->

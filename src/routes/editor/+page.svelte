@@ -21,7 +21,8 @@
 	// import { Tensor } from 'onnxruntime-web';
 
 	import * as ort from 'onnxruntime-web';
-	import { AppShell, RadioGroup, RadioItem, Tab, TabGroup } from '@skeletonlabs/skeleton';
+	import { AppBar, AppShell, LightSwitch, RadioGroup, RadioItem, Tab, TabGroup } from '@skeletonlabs/skeleton';
+	import { goto } from '$app/navigation';
 	// import * as ort from 'onnxruntime-web/webgpu';
 	//models paths
 	const mobileSAMEncoderPath = '/mobile_sam.encoder.onnx';
@@ -202,12 +203,15 @@
 					maskCanvas.style.height =
 					originalImgElement.style.height =
 						'auto';
+						imageCanvas.style.maxHeight =
+					maskCanvas.style.maxHeight =
+					originalImgElement.style.maxHeight = '75vh'				
 			} else {
 				imageCanvas.style.width = maskCanvas.style.width = originalImgElement.style.width = 'auto';
 				imageCanvas.style.height =
 					maskCanvas.style.height =
 					originalImgElement.style.height =
-						'70vh';
+						'75vh';
 			}
 			const canvasElementSize = imageCanvas.getBoundingClientRect();
 			// canvasesContainer.style.height = `${canvasElementSize.height}px`;
@@ -248,96 +252,6 @@
 		};
 	};
 
-	// uploadedImage = img;
-
-	// const handleFileInputChange = async (event: Event) => {
-	// 	console.log(event)
-	// 	const files = (event.target as HTMLInputElement).files;
-	// 	console.log(files)
-	// 	let uploadedImageFile: File = files?.[0] as File;
-	// 	if (!uploadedImageFile) return;
-	// 	imgName = uploadedImageFile.name.substring(0, uploadedImageFile.name.lastIndexOf('.'));
-	// 	//clean clicked positions
-	// 	// clickedPositions = [];
-	// 	//new states management
-	// 	editorStatesHistory = [];
-	// 	let reader = new FileReader();
-	// 	reader.onload = async (e) => {
-	// 		imagebase64URL = e.target?.result as string;
-	// 		const img = new Image();
-	// 		img.src = imagebase64URL as string;
-	// 		img.onload = async () => {
-	// 			// Calculate aspect ratio
-	// 			imageCanvas.width = img.width;
-	// 			maskCanvas.width = img.width;
-	// 			imageCanvas.height = img.height;
-	// 			maskCanvas.height = img.height;
-	// 			// initializeMask(imageCanvas.width, imageCanvas.height);
-
-	// 			if (imageCanvas.width > imageCanvas.height) {
-	// 				imageCanvas.style.width = maskCanvas.style.width = originalImgElement.style.width = '100%';
-	// 				imageCanvas.style.height = maskCanvas.style.height = originalImgElement.style.height ='auto';
-	// 			} else {
-	// 				imageCanvas.style.width = maskCanvas.style.width = originalImgElement.style.width ='auto';
-	// 				imageCanvas.style.height = maskCanvas.style.height = originalImgElement.style.height ='70vh';
-	// 			}
-	// 			const canvasElementSize = imageCanvas.getBoundingClientRect();
-	// 			ImgResToCanvasSizeRatio = img.width / canvasElementSize.width;
-
-	// 			const ctx = imageCanvas.getContext('2d');
-	// 			if (uploadedImage) {
-	// 				clearCanvas(imageCanvas);
-	// 				ctx.drawImage(
-	// 					uploadedImage,
-	// 					0,
-	// 					0,
-	// 					uploadedImage.width,
-	// 					uploadedImage.height,
-	// 					0,
-	// 					0,
-	// 					imageCanvas.width,
-	// 					imageCanvas.height
-	// 				);
-	// 				//set initial state
-	// 				imgDataOriginal = getImageData(imageCanvas);
-	// 				currentEditorState = {
-	// 					maskBrush: new Array(imgDataOriginal.height)
-	// 						.fill(false)
-	// 						.map(() => new Array(imgDataOriginal.width).fill(false)),
-	// 					maskSAM: new Array(imgDataOriginal.height)
-	// 						.fill(false)
-	// 						.map(() => new Array(imgDataOriginal.width).fill(false)),
-	// 					maskSAMDilated: new Array(imgDataOriginal.height)
-	// 						.fill(false)
-	// 						.map(() => new Array(imgDataOriginal.width).fill(false)),
-	// 					clickedPositions: new Array<SAMmarker>(),
-	// 					imgData: imgDataOriginal,
-	// 					currentImgEmbedding: undefined
-	// 				} as editorState;
-	// 				editorStatesHistory = [];
-	// 				editorStatesUndoed = [];
-	// 			}
-
-	// 			// drawImage(imageCanvas);
-	// 			// drawMarkers(imageCanvas, clickedPositions);
-
-	// 			//input for SAM encoder
-	// 			if (imgDataOriginal && onnxSession) {
-	// 				// isEmbedderRunning = true;
-	// 				const embedder_output = await runModelEncoder(onnxSession, imgDataOriginal);
-
-	// 				if (embedder_output) {
-	// 					currentEditorState.currentImgEmbedding = embedder_output;
-	// 					isEmbedderRunning = false;
-	// 				}
-	// 			}
-	// 		};
-	// 		uploadedImage = img;
-	// 	};
-
-	// 	isEmbedderRunning = true;
-	// 	reader.readAsDataURL(uploadedImageFile);
-	// };
 
 	async function runModelEncoder(
 		embedderOnnxSession: ort.InferenceSession,
@@ -606,15 +520,6 @@
 		if (ctx) {
 			const imageData = ctx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
 
-			// let maskArray: boolean[][] = [];
-			// maskArray.map((row: boolean[], y: number) => {
-			// 	row.map((val, x) => {
-			// 		const index = (y * maskCanvas.width + x) * 4; //RGBA
-			// 		const alpha = imageData.data[index + 3]; // Alpha value indicates if the pixel is drawn to
-			// 		row.push(alpha > 128); //mark as masked pixels with alpha > 128 (minimizes aliasing better than >0)
-			// 	});
-			// });
-
 			const maskArray: boolean[][] = [];
 			for (let y = 0; y < maskCanvas.height; y++) {
 				const row: boolean[] = [];
@@ -776,30 +681,6 @@
 		drawMask(maskCanvas, state.maskBrush, 1, true);
 	}
 
-	// function drawMask(maskCanvas: HTMLCanvasElement, maskArray: boolean[][]) {
-	// 	const maskCanvasctx = maskCanvas.getContext('2d');
-	// 	if (maskCanvasctx) {
-	// 		// //map bool array to imageData
-	// 		let imageData: ImageData = maskCanvasctx.createImageData(maskArray[0].length, maskArray.length);
-	// 		maskArray.map((row: boolean[], y: number) => {
-	// 			row.map((val, x) => {
-	// 				let index = (y * maskArray[0].length + x) * 4;
-	// 				if(val){
-	// 					imageData.data[index] = 89;
-	// 					imageData.data[index + 1] = 156;
-	// 					imageData.data[index + 2] = 255;
-	// 					imageData.data[index + 3] = 128;
-	// 				}else{
-	// 					imageData.data[index] = 0;
-	// 					imageData.data[index + 1] = 0;
-	// 					imageData.data[index + 2] = 0;
-	// 					imageData.data[index + 3] = 0;
-	// 				}
-	// 			});
-	// 		});
-	// 		maskCanvasctx.putImageData(imageData, 0, 0);
-	// 	}
-	// }
 	function drawMask(
 		maskCanvas: HTMLCanvasElement,
 		maskArray: any,
@@ -987,11 +868,14 @@
 	}
 
 	onMount(async () => {
+		if($uploadedImgBase64 === null || $uploadedImgFileName === ""){
+			goto('/');
+		}
+
 		window.addEventListener('resize', () => {
 			if (imageCanvas) {
 				const canvasElementSize = imageCanvas.getBoundingClientRect();
 				ImgResToCanvasSizeRatio = imageCanvas.width / canvasElementSize.width;
-				// canvasesContainer.style.height = `${canvasElementSize.height}px`;
 			}
 		});
 		await tf.ready();
@@ -1025,7 +909,23 @@
 	});
 </script>
 
+
+
+
 <AppShell slotSidebarLeft="overflow-visible max-w-80 h-full shadow-md">
+
+	<svelte:fragment slot="header">
+		<AppBar>
+			<svelte:fragment slot="lead">
+				<a href="/" class="font-bold">Smart Object remover</a>
+			</svelte:fragment>
+			<svelte:fragment  slot="trail">
+				<a href="/" class="font-semibold">Home</a>
+				<a href="/about" class="font-semibold">About</a>
+				<LightSwitch />
+			</svelte:fragment>
+		</AppBar>
+	</svelte:fragment>
 	<!-- class="max-w-80 h-full shadow-md" -->
 	<svelte:fragment slot="sidebarLeft">
 		<TabGroup>
@@ -1044,25 +944,6 @@
 			<div slot="panel" class="p-4">
 				{#if selectedTool === 'brush'}
 					<div>
-						<!-- <label>
-							<input
-								type="radio"
-								bind:group={selectedBrushMode}
-								value="brush"
-								on:change={(e) => handleBrushModeChange(e, maskCanvas)}
-							/>
-							Brush <Brush/>
-						</label>
-						<label>
-							<input
-								type="radio"
-								bind:group={selectedBrushMode}
-								value="eraser"
-								on:change={(e) => handleBrushModeChange(e, maskCanvas)}
-							/>
-							Eraser <Eraser/>
-						</label> -->
-
 						<label for="brushtoolselect" class="font-semibold">Select tool:</label>
 						<div class="font-thin">
 							Select brush or eraser tool to mark the area you want to remove
@@ -1227,10 +1108,10 @@
 			</div>
 		</div>
 		<!-- bottom buttons -->
-		<div class="flex justify-end pt-2">
+		<div class="flex justify-end pt-4">
 			<div />
 			<button
-				class="btn btn-xl variant-filled-primary text-white font-semibold"
+				class="btn btn-xl variant-filled-primary text-white dark:text-white font-semibold"
 				on:click={async () => {
 					let resultImgData = await runInpainting(currentEditorState);
 					setInpaintedImgEditorState(resultImgData);
