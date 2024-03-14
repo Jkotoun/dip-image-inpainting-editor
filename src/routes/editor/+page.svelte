@@ -113,8 +113,6 @@
 	let selectedTool: 'brush' | 'segment_anything' = 'segment_anything';
 	let selectedSAMMode: 'positive' | 'negative' = 'positive';
 
-
-	
 	// let beforeAfterMode: 'before' | 'after' = 'after';
 	// $: handleBeforeAfterSwitch(beforeAfterMode);
 
@@ -558,6 +556,7 @@
 		if (isPainting) {
 			paintOnCanvas(x, y, brushSize, canvas);
 		}
+		console.log(currentCanvasRelativeX, currentCanvasRelativeY);
 	}
 
 	function showBrushCursor(event: MouseEvent) {
@@ -993,9 +992,6 @@
 				const canvasElementSize = imageCanvas.getBoundingClientRect();
 				ImgResToCanvasSizeRatio = imageCanvas.width / canvasElementSize.width;
 				// canvasesContainer.style.height = `${canvasElementSize.height}px`;
-
-
-
 			}
 		});
 		await tf.ready();
@@ -1027,13 +1023,11 @@
 		isLoading = false;
 		setupEditor(uploadedImage, $uploadedImgFileName);
 	});
-
 </script>
 
 <AppShell slotSidebarLeft="overflow-visible max-w-80 h-full shadow-md">
 	<!-- class="max-w-80 h-full shadow-md" -->
-	<svelte:fragment slot="sidebarLeft"
-	 >
+	<svelte:fragment slot="sidebarLeft">
 		<TabGroup>
 			<Tab
 				class="px-8 py-4"
@@ -1098,7 +1092,7 @@
 				{:else if selectedTool === 'segment_anything'}
 					<label for="sammodeselect" class="font-semibold">Select smart selector mode:</label>
 					<div class="font-thin">
-						Add positive (adds area) or negative (removes area) points for selection
+						Add positive (adds area to selection) or negative (removes area from selection) points for selection
 					</div>
 					<RadioGroup id="sammodeselect" class="text-token mb-4">
 						<RadioItem bind:group={selectedSAMMode} name="sammode" value="positive">
@@ -1177,50 +1171,60 @@
 		</div>
 		<!-- editor canvases-->
 		<div
-
-			class="canvases shadow-lg"
+			class="canvases"
 			bind:this={canvasesContainer}
-			on:mouseenter={showBrushCursor}
-			on:mouseleave={hideBrushCursor}
 			style="cursor: {selectedTool === 'segment_anything'
 				? 'default'
 				: currentCursor === 'default'
 				? 'auto'
 				: 'none'}"
-			role="group"
 		>
 			<div
-				id="brushToolCursor"
-				style="
-			display: {selectedTool === 'segment_anything'
-					? 'none'
-					: currentCursor === 'default'
-					? 'none'
-					: 'block'};
-			width: {brushSize-2}px;
-			height: {brushSize-2}px;
-			left: {currentCanvasRelativeX}px;
-			top: {currentCanvasRelativeY}px;
-			background-color: {selectedBrushMode === 'brush' ? '#408dff' : '#f5f5f5'};
-			border: 1px solid #0261ed;
-			opacity: {isPainting ? 0.6 : 0.5};
-	
-		"
-			/>
-			<canvas id="imageCanvas" bind:this={imageCanvas} />
-			<canvas
-				id="maskCanvas"
-				bind:this={maskCanvas}
-				on:mousedown={selectedTool === 'brush' ? startPainting : undefined}
-				on:mouseup={selectedTool === 'brush' ? stopPainting : undefined}
-				on:mousemove={(event) =>
-					selectedTool === 'brush' ? handleEditorMouseMove(event, maskCanvas) : undefined}
-				on:click={selectedTool === 'segment_anything'
-					? async (e) => handleCanvasClick(e)
-					: undefined}
-				on:contextmenu={selectedTool === 'segment_anything' ? handleCanvasClick : undefined}
-			/>
-			<img src={$uploadedImgBase64} alt="originalImage" bind:this={originalImgElement} />
+				class="relative"
+				on:mouseenter={showBrushCursor}
+				on:mouseleave={hideBrushCursor}
+				role="group"
+			>
+				<div class="absolute w-full h-full overflow-hidden">
+					<div
+						id="brushToolCursor"
+						style="
+		display: {selectedTool === 'segment_anything'
+							? 'none'
+							: currentCursor === 'default'
+							? 'none'
+							: 'block'};
+		width: {brushSize - 2}px;
+		height: {brushSize - 2}px;
+		left: {currentCanvasRelativeX}px;
+		top: {currentCanvasRelativeY}px;
+		background-color: {selectedBrushMode === 'brush' ? '#408dff' : '#f5f5f5'};
+		border: 1px solid #0261ed;
+		opacity: {isPainting ? 0.6 : 0.5};
+
+	"
+					/>
+				</div>
+				<canvas class="shadow-lg" id="imageCanvas" bind:this={imageCanvas} />
+				<canvas
+					id="maskCanvas"
+					bind:this={maskCanvas}
+					on:mousedown={selectedTool === 'brush' ? startPainting : undefined}
+					on:mouseup={selectedTool === 'brush' ? stopPainting : undefined}
+					on:mousemove={(event) =>
+						selectedTool === 'brush' ? handleEditorMouseMove(event, maskCanvas) : undefined}
+					on:click={selectedTool === 'segment_anything'
+						? async (e) => handleCanvasClick(e)
+						: undefined}
+					on:contextmenu={selectedTool === 'segment_anything' ? handleCanvasClick : undefined}
+				/>
+				<img
+					class="shadow-lg relative"
+					src={$uploadedImgBase64}
+					alt="originalImage"
+					bind:this={originalImgElement}
+				/>
+			</div>
 		</div>
 		<!-- bottom buttons -->
 		<div class="flex justify-end pt-2">
@@ -1246,16 +1250,17 @@
 		height: 100%;
 		display: block;
 	}
-	.canvases img,
-	.canvases #maskCanvas{
+	
+	.canvases #maskCanvas {
 		position: absolute;
 	}
 	.canvases #maskCanvas {
 		opacity: 0.5;
-		/* box-shadow: 0 0 10px 0 rgba(0, 0, 0, 0.2); */
 	}
 	.canvases {
 		position: relative;
+		display: flex;
+		justify-content: center;
 	}
 	#brushToolCursor {
 		position: absolute;
@@ -1268,5 +1273,4 @@
 	.canvases img {
 		display: none;
 	}
-
 </style>
