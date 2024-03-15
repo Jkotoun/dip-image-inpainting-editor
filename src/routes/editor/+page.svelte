@@ -26,8 +26,8 @@
 	// import * as ort from 'onnxruntime-web/webgpu';
 	//models paths
 	const mobileSAMEncoderPath = '/mobile_sam.encoder.onnx';
-	const mobileSAMDecoderPath = '/tfjs_decoder_mobile/model.json';
-	// const mobileSAMDecoderPath = '/tfjs_tiny_decoder_quantized/model.json';
+	// const mobileSAMDecoderPath = '/tfjs_decoder_mobile/model.json';
+	const mobileSAMDecoderPath = '/tfjs_tiny_decoder_quantized/model.json';
 
 	const mobile_inpainting_GAN = '/migan_pipeline_v2.onnx';
 
