@@ -4,6 +4,9 @@
 	import './../app.css';
 	import { AppShell, AppBar, TabGroup, Tab } from '@skeletonlabs/skeleton';
 	import { LightSwitch } from '@skeletonlabs/skeleton';
+	import { initializeStores } from '@skeletonlabs/skeleton';
+
+	initializeStores();
 </script>
 
 

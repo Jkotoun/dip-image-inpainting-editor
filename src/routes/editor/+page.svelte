@@ -21,7 +21,7 @@
 	// import { Tensor } from 'onnxruntime-web';
 
 	import * as ort from 'onnxruntime-web';
-	import { AppBar, AppShell, LightSwitch, RadioGroup, RadioItem, Tab, TabGroup } from '@skeletonlabs/skeleton';
+	import { AppBar, AppShell, Drawer, getDrawerStore, LightSwitch, RadioGroup, RadioItem, Tab, TabGroup } from '@skeletonlabs/skeleton';
 	import { goto } from '$app/navigation';
 	// import * as ort from 'onnxruntime-web/webgpu';
 	//models paths
@@ -907,16 +907,93 @@
 		isLoading = false;
 		setupEditor(uploadedImage, $uploadedImgFileName);
 	});
+	const drawerStore = getDrawerStore();
+
 </script>
 
 
+<Drawer>
+	<h2 class="p-4 font-semibold">Smart object remover</h2>
+	<hr />
+	<TabGroup>
+		<Tab
+			class="px-8 py-4"
+			bind:group={selectedTool}
+			name="segment_anything"
+			value="segment_anything"
+		>
+			<span class="flex gap-x-2 items-center"> <WandSparkles size={18} /> Smart selector</span>
+		</Tab>
+		<Tab class="px-8 py-4" bind:group={selectedTool} name="brush" value="brush">
+			<span class="flex gap-x-2 items-center"> <Brush size={18} /> Brush</span>
+		</Tab>
 
+		<div slot="panel" class="p-4">
+			{#if selectedTool === 'brush'}
+				<div>
+					<label for="brushtoolselect" class="font-semibold">Select tool:</label>
+					<div class="font-thin">
+						Select brush or eraser tool to mark the area you want to remove
+					</div>
+					<RadioGroup class="text-token mb-4" id="brushtoolselect">
+						<RadioItem
+							bind:group={selectedBrushMode}
+							on:change={(e) => handleBrushModeChange(e, maskCanvas)}
+							name="brushtool"
+							value="brush"
+						>
+							<Brush size={18} />
+						</RadioItem>
+						<RadioItem
+							bind:group={selectedBrushMode}
+							on:change={(e) => handleBrushModeChange(e, maskCanvas)}
+							name="brushtool"
+							value="eraser"
+						>
+							<Eraser size={18} />
+						</RadioItem>
+					</RadioGroup>
 
-<AppShell slotSidebarLeft="overflow-visible max-w-80 h-full shadow-md">
+					<label for="brushSize">Brush size: {brushSize}</label>
+					<input type="range" min="1" max="500" bind:value={brushSize} />
+				</div>
+			{:else if selectedTool === 'segment_anything'}
+				<label for="sammodeselect" class="font-semibold">Select smart selector mode:</label>
+				<div class="font-thin">
+					Add positive (adds area to selection) or negative (removes area from selection) points for selection
+				</div>
+				<RadioGroup id="sammodeselect" class="text-token mb-4">
+					<RadioItem bind:group={selectedSAMMode} name="sammode" value="positive">
+						<PlusCircleIcon size={18} />
+					</RadioItem>
+					<RadioItem bind:group={selectedSAMMode} name="sammode" value="negative">
+						<MinusCircle size={18} />
+					</RadioItem>
+				</RadioGroup>
+				<label for="pixelsDilatation">Mask dilatation: {pixelsDilatation}</label>
+				<div class="font-thin">
+					For best results, all edges of object should be inside the mask
+				</div>
+				<input type="range" min="0" max="25" bind:value={pixelsDilatation} />
+			{/if}
+		</div>
+	</TabGroup>
+</Drawer>
+
+<AppShell slotSidebarLeft="overflow-visible lg:w-80 w-0 h-full shadow-md">
 
 	<svelte:fragment slot="header">
 		<AppBar>
 			<svelte:fragment slot="lead">
+				<button class="lg:hidden btn btn-sm mr-4" on:click={() => drawerStore.open({})}>
+					<span>
+						<svg viewBox="0 0 100 80" class="fill-token w-4 h-4">
+							<rect width="100" height="20" />
+							<rect y="30" width="100" height="20" />
+							<rect y="60" width="100" height="20" />
+						</svg>
+					</span>
+				</button>
 				<a href="/" class="font-bold">Smart Object remover</a>
 			</svelte:fragment>
 			<svelte:fragment  slot="trail">
@@ -992,7 +1069,7 @@
 			</div>
 		</TabGroup>
 	</svelte:fragment>
-	<div class="px-64 py-4">
+	<div class="2xl:px-64 xl:px-16 md:px-8 px-3  py-4">
 		{#if isLoading}
 			<h3>Loading model...</h3>
 		{:else if isEmbedderRunning}
@@ -1001,25 +1078,26 @@
 		<!-- top buttons panel -->
 		<div class="flex pb-4 justify-between">
 			<!-- left buttons -->
-			<div class="flex gap-x-2">
+			<div class="flex lg:gap-x-2 gap-x-1">
 				<button
-					class="btn variant-filled"
+					class="btn btn-sm lg:btn-md variant-filled"
 					on:click={undoLastAction}
-					disabled={editorStatesHistory.length === 0}><Undo /></button
+					disabled={editorStatesHistory.length === 0}><Undo class="lg:w-6 lg:h-6 w-4 h-4" /></button
 				>
 				<button
-					class="btn variant-filled"
+					class="btn btn-sm lg:btn-md variant-filled"
 					on:click={redoLastAction}
-					disabled={editorStatesUndoed.length === 0}><Redo /></button
+					disabled={editorStatesUndoed.length === 0}><Redo class="lg:w-6 lg:h-6 w-4 h-4" /></button
 				>
-				<button class="btn variant-filled" on:click={reset}><RotateCw /></button>
+				<button class="btn btn-sm lg:btn-md variant-filled" on:click={reset}><RotateCw class="lg:w-6 lg:h-6 w-4 h-4"/></button>
 			</div>
+
 			<!-- right buttons -->
-			<div class="flex gap-x-2">
+			<div class="flex lg:gap-x-2 gap-x-1">
 				<div
 					role="button"
 					tabindex="0"
-					class="btn variant-filled"
+					class="btn btn-sm lg:btn-md variant-filled "
 					on:mousedown={() => {
 						maskCanvas.style.display = 'none';
 						imageCanvas.style.display = 'none';
@@ -1031,8 +1109,11 @@
 						originalImgElement.style.display = 'none';
 					}}
 				>
-					Hold to compare
+					<span class="hidden sm:inline no-margin">Hold to compare</span>
+					<span class="no-margin sm:hidden">Compare</span>
 				</div>
+				
+
 				<!-- <RadioGroup class="text-token">
 					<RadioItem bind:group={beforeAfterMode} name="before_after" value="before">
 						Before
@@ -1043,10 +1124,10 @@
 				</RadioGroup> -->
 
 				<button
-					class="btn variant-filled"
+					class="btn btn-sm lg:btn-md variant-filled"
 					on:click={() => downloadImage(currentEditorState.imgData)}
 				>
-					<span class="flex gap-x-2 items-center"><HardDriveDownload size={18} /> Download </span>
+					<span class="flex gap-x-2 items-center"><HardDriveDownload class="lg:w-6 lg:h-6 w-4 h-4" /> Download </span>
 				</button>
 			</div>
 		</div>
@@ -1111,7 +1192,7 @@
 		<div class="flex justify-end pt-4">
 			<div />
 			<button
-				class="btn btn-xl variant-filled-primary text-white dark:text-white font-semibold"
+				class="btn lg:btn-xl btn-lg variant-filled-primary text-white dark:text-white font-semibold"
 				on:click={async () => {
 					let resultImgData = await runInpainting(currentEditorState);
 					setInpaintedImgEditorState(resultImgData);
@@ -1153,5 +1234,9 @@
 	}
 	.canvases img {
 		display: none;
+	}
+	.no-margin{
+		margin: 0 !important;
+
 	}
 </style>
