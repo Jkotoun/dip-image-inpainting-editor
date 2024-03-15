@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import * as tf from '@tensorflow/tfjs';
 	import { uploadedImgBase64, uploadedImgFileName } from '../../stores';
 	import {
@@ -21,7 +21,7 @@
 	// import { Tensor } from 'onnxruntime-web';
 
 	import * as ort from 'onnxruntime-web';
-	import { AppBar, AppShell, Drawer, getDrawerStore, LightSwitch, RadioGroup, RadioItem, Tab, TabGroup } from '@skeletonlabs/skeleton';
+	import { AppBar, AppShell, Drawer, getDrawerStore, LightSwitch, ProgressRadial, RadioGroup, RadioItem, Tab, TabGroup } from '@skeletonlabs/skeleton';
 	import { goto } from '$app/navigation';
 	// import * as ort from 'onnxruntime-web/webgpu';
 	//models paths
@@ -54,6 +54,8 @@
 	let isLoading = true;
 	let isEmbedderRunning = false;
 	let decoderLoading = false;
+	let inpaintingRunning = false;
+	$: anythingLoading = inpaintingRunning || isLoading || isEmbedderRunning || decoderLoading;
 	//segmentation model constants
 	const longSideLength = 1024;
 	let model: tf.GraphModel<string | tf.io.IOHandler>;
@@ -633,7 +635,6 @@
 
 	async function runInpainting(currentEditorState: editorState): Promise<ImageData> {
 		let imgUInt8Array = imgDataToRGBArray(currentEditorState.imgData).rgbArray;
-
 		let nchwBuffer = reshapeBufferToNCHW(
 			imgUInt8Array,
 			1,
@@ -666,6 +667,16 @@
 		let result: Uint8Array = output!['result'].data as Uint8Array;
 		let resultImgData = RGB_CHW_array_to_imageData(result, imageCanvas.height, imageCanvas.width);
 		return resultImgData;
+	}
+
+	async function handleInpainting() {
+		inpaintingRunning = true;
+		//find more efficient way if there is any
+		setTimeout(async () => {			
+			const inpaintedImgData = await runInpainting(currentEditorState);
+			setInpaintedImgEditorState(inpaintedImgData);
+			inpaintingRunning = false;
+		}, 10);
 	}
 
 	function renderEditorState(
@@ -1070,11 +1081,6 @@
 		</TabGroup>
 	</svelte:fragment>
 	<div class="2xl:px-64 xl:px-16 md:px-8 px-3  py-4">
-		{#if isLoading}
-			<h3>Loading model...</h3>
-		{:else if isEmbedderRunning}
-			<h3>Running embedder...</h3>
-		{/if}
 		<!-- top buttons panel -->
 		<div class="flex pb-4 justify-between">
 			<!-- left buttons -->
@@ -1082,21 +1088,20 @@
 				<button
 					class="btn btn-sm lg:btn-md variant-filled"
 					on:click={undoLastAction}
-					disabled={editorStatesHistory.length === 0}><Undo class="lg:w-6 lg:h-6 w-4 h-4" /></button
+					disabled={editorStatesHistory.length === 0 || anythingLoading}><Undo class="lg:w-6 lg:h-6 w-4 h-4" /></button
 				>
 				<button
 					class="btn btn-sm lg:btn-md variant-filled"
 					on:click={redoLastAction}
-					disabled={editorStatesUndoed.length === 0}><Redo class="lg:w-6 lg:h-6 w-4 h-4" /></button
+					disabled={editorStatesUndoed.length === 0 || anythingLoading}><Redo class="lg:w-6 lg:h-6 w-4 h-4" /></button
 				>
-				<button class="btn btn-sm lg:btn-md variant-filled" on:click={reset}><RotateCw class="lg:w-6 lg:h-6 w-4 h-4"/></button>
+				<button disabled={anythingLoading} class="btn btn-sm lg:btn-md variant-filled" on:click={reset}><RotateCw class="lg:w-6 lg:h-6 w-4 h-4"/></button>
 			</div>
 
 			<!-- right buttons -->
 			<div class="flex lg:gap-x-2 gap-x-1">
-				<div
-					role="button"
-					tabindex="0"
+				<button
+					disabled={anythingLoading}
 					class="btn btn-sm lg:btn-md variant-filled "
 					on:mousedown={() => {
 						maskCanvas.style.display = 'none';
@@ -1111,7 +1116,7 @@
 				>
 					<span class="hidden sm:inline no-margin">Hold to compare</span>
 					<span class="no-margin sm:hidden">Compare</span>
-				</div>
+				</button>
 				
 
 				<!-- <RadioGroup class="text-token">
@@ -1124,6 +1129,8 @@
 				</RadioGroup> -->
 
 				<button
+					disabled={anythingLoading}
+
 					class="btn btn-sm lg:btn-md variant-filled"
 					on:click={() => downloadImage(currentEditorState.imgData)}
 				>
@@ -1133,20 +1140,23 @@
 		</div>
 		<!-- editor canvases-->
 		<div
-			class="canvases"
-			bind:this={canvasesContainer}
-			style="cursor: {selectedTool === 'segment_anything'
+		class="canvases "
+		bind:this={canvasesContainer}
+		style="cursor: {selectedTool === 'segment_anything'
 				? 'default'
 				: currentCursor === 'default'
 				? 'auto'
 				: 'none'}"
 		>
-			<div
-				class="relative"
-				on:mouseenter={showBrushCursor}
-				on:mouseleave={hideBrushCursor}
-				role="group"
-			>
+		<div
+		class="relative"
+		on:mouseenter={showBrushCursor}
+		on:mouseleave={hideBrushCursor}
+		role="group"
+		>
+		<div class='absolute w-full h-full flex items-center justify-center z-50 {(!anythingLoading)? "hidden" : ""}'>
+			<ProgressRadial  meter="stroke-primary-500" track="stroke-primary-500/30" />
+		</div>
 				<div class="absolute w-full h-full overflow-hidden">
 					<div
 						id="brushToolCursor"
@@ -1167,9 +1177,10 @@
 	"
 					/>
 				</div>
-				<canvas class="shadow-lg" id="imageCanvas" bind:this={imageCanvas} />
+				<canvas class="shadow-lg {anythingLoading? "opacity-50 cursor-not-allowed" : ""}" id="imageCanvas" bind:this={imageCanvas} />
 				<canvas
 					id="maskCanvas"
+					class={anythingLoading? "opacity-50 cursor-not-allowed" : ""}
 					bind:this={maskCanvas}
 					on:mousedown={selectedTool === 'brush' ? startPainting : undefined}
 					on:mouseup={selectedTool === 'brush' ? stopPainting : undefined}
@@ -1181,7 +1192,7 @@
 					on:contextmenu={selectedTool === 'segment_anything' ? handleCanvasClick : undefined}
 				/>
 				<img
-					class="shadow-lg relative"
+					class="shadow-lg {anythingLoading? "opacity-50 cursor-not-allowed" : ""}"
 					src={$uploadedImgBase64}
 					alt="originalImage"
 					bind:this={originalImgElement}
@@ -1193,10 +1204,8 @@
 			<div />
 			<button
 				class="btn lg:btn-xl btn-lg variant-filled-primary text-white dark:text-white font-semibold"
-				on:click={async () => {
-					let resultImgData = await runInpainting(currentEditorState);
-					setInpaintedImgEditorState(resultImgData);
-				}}
+				disabled={anythingLoading}
+				on:click={async() => handleInpainting()}
 			>
 				<span class="flex gap-x-2 items-center"><WandSparkles size={18} /> Remove </span></button
 			>
