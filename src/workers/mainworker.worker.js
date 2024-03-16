@@ -17,12 +17,14 @@ let tfjsDecoder;
 
 
 async function loadEncoderDecoder(){
+    if(encoderReady && decoderReady){
+        return;
+    }
     encoderOnnxSession = await ort.InferenceSession.create(mobileSAMEncoderPath, {
         executionProviders: ['wasm'],
         graphOptimizationLevel: 'all'
     });
     encoderReady = true;
-    console.log("loaded encoder");
     await tf.ready();
     try {
         await import('@tensorflow/tfjs-backend-webgpu');
@@ -37,17 +39,17 @@ async function loadEncoderDecoder(){
     }
     tfjsDecoder = await tf.loadGraphModel(mobileSAMDecoderPath);
     decoderReady = true;
-    console.log("loaded decoder");
     self.postMessage({ type: MESSAGE_TYPES.ENCODER_DECODER_LOADED, data: "Encoder and decoder loaded" });
 }
 async function loadInpainter(){
-    miganOnnxSession = await ort.InferenceSession.create(mobile_inpainting_GAN, {
-        executionProviders: ['wasm'],
-        graphOptimizationLevel: 'all'
-    });
-    inpainterReady = true;
-    console.log("loaded inpainter");
-    self.postMessage({ type: MESSAGE_TYPES.INPAINTER_LOADED, data: "Inpainter loaded" });
+    if(!inpainterReady){
+        miganOnnxSession = await ort.InferenceSession.create(mobile_inpainting_GAN, {
+            executionProviders: ['wasm'],
+            graphOptimizationLevel: 'all'
+        });
+        inpainterReady = true;
+        self.postMessage({ type: MESSAGE_TYPES.INPAINTER_LOADED, data: "Inpainter loaded" });
+    }
 }
 
 loadEncoderDecoder();
@@ -74,6 +76,8 @@ self.onmessage = async function (event) {
         checkLoadState();
     }
     else if(type === MESSAGE_TYPES.LOAD_INPAINTER){
+        if(inpainterReady)
+            return;
         loadInpainter();
     }
     else if (type === MESSAGE_TYPES.DECODER_RUN && decoderReady) {

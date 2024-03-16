@@ -143,16 +143,12 @@
 		$mainWorker.onmessage = async (event) => {
 			const { type } = event.data;
 			if (type === MESSAGE_TYPES.ALL_MODELS_LOADED) {
-				console.log('all loaded right away');
 				decoderLoading = encoderLoading = inpainterLoading = false;
 				$mainWorker!.onmessage = handleWorkerModelsMessages;
 				isEmbedderRunning = true;
 				runModelEncoder(currentEditorState.imgData);
 				// Continue with your logic here...
-			} else if (type === MESSAGE_TYPES.NONE_LOADED) {
-				console.log('none loaded yet');
-			} else if (type === MESSAGE_TYPES.ENCODER_DECODER_LOADED) {
-				console.log('embedder/decoder loaded, load inpainter also');
+			}else if (type === MESSAGE_TYPES.ENCODER_DECODER_LOADED) {
 				$mainWorker!.onmessage = handleWorkerModelsMessages;
 				$mainWorker?.postMessage({ type: MESSAGE_TYPES.LOAD_INPAINTER });
 				encoderLoading = decoderLoading = false;
@@ -160,9 +156,7 @@
 				runModelEncoder(currentEditorState.imgData);
 			}
 		};
-	} else {
-		goto('/');
-	}
+	} 
 
 	//EMBEDDING FUNCTIONS
 	async function getResizedImgRGBArray(
@@ -1102,7 +1096,7 @@
 				: 'none'}"
 		>
 			<div
-				class="relative"
+				class="relative w-full"
 				on:mouseenter={showBrushCursor}
 				on:mouseleave={hideBrushCursor}
 				role="group"
