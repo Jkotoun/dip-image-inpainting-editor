@@ -60,38 +60,10 @@
 	};
 
 	onMount(() => {
-		// if (typeof Worker !== 'undefined') {
-		// 	console.log('Yes! Web worker support!');
-		// 	// Yes! Web worker support!
-		// 	// Some code.....
-		// } else {
-		// 	console.log('Sorry! No Web Worker support..');
-		// 	// Sorry! No Web Worker support..
-		// }
-
-		
 		if(!$mainWorker){
-			console.log("registering new worker")
 			w = new Worker('/src/workers/mainworker.worker.js' , { type: "module" });
 			mainWorker.set(w);
 		}
-
-		if($mainWorker){
-			$mainWorker.onmessage = function (event) {
-				console.log("recieved response in main: ", event.data)
-			};
-	
-			$mainWorker.postMessage({type:"init", data:'Important data'});
-		}
-
-
-		// // Send a message to the worker when the component is mounted
-		// workerStore.sendMessage('Hello from main thread');
-
-		// // Listen for messages from the worker
-		// workerStore.receiveMessage((message: any) => {
-		// 	console.log('Received message in App:', message);
-		// });
 	});
 </script>
 

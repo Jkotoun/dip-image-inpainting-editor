@@ -23,7 +23,18 @@
 	// import { Tensor } from 'onnxruntime-web';
 
 	import * as ort from 'onnxruntime-web';
-	import { AppBar, AppShell, Drawer, getDrawerStore, LightSwitch, ProgressRadial, RadioGroup, RadioItem, Tab, TabGroup } from '@skeletonlabs/skeleton';
+	import {
+		AppBar,
+		AppShell,
+		Drawer,
+		getDrawerStore,
+		LightSwitch,
+		ProgressRadial,
+		RadioGroup,
+		RadioItem,
+		Tab,
+		TabGroup
+	} from '@skeletonlabs/skeleton';
 	import { goto } from '$app/navigation';
 	// import * as ort from 'onnxruntime-web/webgpu';
 	//models paths
@@ -147,23 +158,29 @@
 
 	$: changeDilatation(pixelsDilatation);
 
-	if($mainWorker){
-
+	if ($mainWorker) {
 		$mainWorker.onmessage = function (event) {
-			const {data, type} = event.data;
-			if(type===MESSAGE_TYPES.DECODER_RUN_RESULT){
+			const { data, type } = event.data;
+			if (type === MESSAGE_TYPES.DECODER_RUN_RESULT) {
 				const SAMMaskArray = data.map((val: number[]) => val.map((v) => v > 0.0));
-				if(SAMMaskArray){
+				if (SAMMaskArray) {
 					currentEditorState.maskSAM = SAMMaskArray;
 					currentEditorState.maskSAMDilated = dilateMaskByPixels(pixelsDilatation, SAMMaskArray);
 					renderEditorState(currentEditorState, imageCanvas, maskCanvas);
 				}
 				decoderLoading = false;
+			} else if (type === MESSAGE_TYPES.ENCODER_RUN_RESULT) {
+				let img_tensor = tf.tensor(data.embeddings as any, data.dims as any, 'float32');
+				currentEditorState.currentImgEmbedding = img_tensor;
+				isEmbedderRunning = false;
+			} else if (type === MESSAGE_TYPES.INPAINTING_RUN_RESULT) {
+				let resultImgData = RGB_CHW_array_to_imageData(data, imageCanvas.height, imageCanvas.width);
+				setInpaintedImgEditorState(resultImgData);
+				inpaintingRunning = false;
 			}
 		};
-	}
-	else{
-		console.error("no worker found")
+	} else {
+		console.error('no worker found');
 	}
 
 	//EMBEDDING FUNCTIONS
@@ -226,9 +243,10 @@
 					maskCanvas.style.height =
 					originalImgElement.style.height =
 						'auto';
-						imageCanvas.style.maxHeight =
+				imageCanvas.style.maxHeight =
 					maskCanvas.style.maxHeight =
-					originalImgElement.style.maxHeight = '75vh'				
+					originalImgElement.style.maxHeight =
+						'75vh';
 			} else {
 				imageCanvas.style.width = maskCanvas.style.width = originalImgElement.style.width = 'auto';
 				imageCanvas.style.height =
@@ -264,23 +282,16 @@
 			} as editorState;
 
 			isEmbedderRunning = true;
+			runModelEncoder(currentEditorState.imgData);
 			//0s timeout to handle UI loading state
-			setTimeout(async () => {
-				currentEditorState.currentImgEmbedding = await runModelEncoder(
-					onnxSession!,
-					currentEditorState.imgData
-				);
-				isEmbedderRunning = false;
-			}, 0);
 		};
 	};
 
-
 	async function runModelEncoder(
-		embedderOnnxSession: ort.InferenceSession,
+		// embedderOnnxSession: ort.InferenceSession,
 		imageData: ImageData
 		// imgRGBData: loadedImgRGBData
-	): Promise<tf.Tensor<tf.Rank>> {
+	): Promise<void> {
 		let resizedImgRGBData = await getResizedImgRGBArray(imageData, longSideLength);
 		// const input = new Float32Array(imgTensor.dataSync());
 		let floatArray = Float32Array.from(resizedImgRGBData.rgbArray);
@@ -289,15 +300,14 @@
 			resizedImgRGBData.width,
 			3
 		]);
-		$mainWorker?.postMessage({ type: MESSAGE_TYPES.TEST, data: inputTensor });
+		$mainWorker?.postMessage({
+			type: MESSAGE_TYPES.ENCODER_RUN,
+			data: {
+				img_array_data: floatArray,
+				dims: [resizedImgRGBData.height, resizedImgRGBData.width, 3]
+			}
+		});
 
-
-		const output = await embedderOnnxSession.run({ input_image: inputTensor });
-		return tf.tensor(
-			output['image_embeddings'].data as any,
-			output['image_embeddings'].dims as any,
-			'float32'
-		);
 	}
 
 	//DECODER MODEL FUNCTIONS
@@ -332,10 +342,6 @@
 		);
 		const hasMaskInputTensor = tf.tensor([0], [1], 'float32');
 
-	
-
-
-
 		let modelInput = {
 			image_embeddings: currentEditorState.currentImgEmbedding as tf.Tensor<tf.Rank>,
 			point_coords: pointCoordsTensor,
@@ -355,15 +361,32 @@
 		}
 		decoderLoading = true;
 		const modelInput = await createInputDict(currentEditorState);
-		$mainWorker?.postMessage({ type: MESSAGE_TYPES.DECODER_RUN, data: {
-			image_embeddings: {data: modelInput.image_embeddings.dataSync(), dims: modelInput.image_embeddings.shape},
-			point_coords: {data: modelInput.point_coords.dataSync(), dims: modelInput.point_coords.shape},
-			point_labels: {data: modelInput.point_labels.dataSync(), dims: modelInput.point_labels.shape},
-			mask_input: {data: modelInput.mask_input.dataSync(), dims: modelInput.mask_input.shape},
-			has_mask_input: {data: modelInput.has_mask_input.dataSync(), dims: modelInput.has_mask_input.shape},
-			orig_im_size: {data: modelInput.orig_im_size.dataSync(), dims: modelInput.orig_im_size.shape}
-
-		} });
+		$mainWorker?.postMessage({
+			type: MESSAGE_TYPES.DECODER_RUN,
+			data: {
+				image_embeddings: {
+					data: modelInput.image_embeddings.dataSync(),
+					dims: modelInput.image_embeddings.shape
+				},
+				point_coords: {
+					data: modelInput.point_coords.dataSync(),
+					dims: modelInput.point_coords.shape
+				},
+				point_labels: {
+					data: modelInput.point_labels.dataSync(),
+					dims: modelInput.point_labels.shape
+				},
+				mask_input: { data: modelInput.mask_input.dataSync(), dims: modelInput.mask_input.shape },
+				has_mask_input: {
+					data: modelInput.has_mask_input.dataSync(),
+					dims: modelInput.has_mask_input.shape
+				},
+				orig_im_size: {
+					data: modelInput.orig_im_size.dataSync(),
+					dims: modelInput.orig_im_size.shape
+				}
+			}
+		});
 	}
 
 	//EDITOR HANDLING FUNCTIONS
@@ -394,9 +417,8 @@
 			imgData: currentEditorState.imgData,
 			currentImgEmbedding: currentEditorState.currentImgEmbedding
 		} as editorState;
-		console.log('here');
 		renderEditorState(currentEditorState, imageCanvas, maskCanvas);
-		runModelDecoder(currentEditorState)
+		runModelDecoder(currentEditorState);
 	}
 
 	function drawImage(canvas: HTMLCanvasElement, imageData: ImageData) {
@@ -487,7 +509,6 @@
 		if (isPainting) {
 			paintOnCanvas(x, y, brushSize, canvas);
 		}
-		console.log(currentCanvasRelativeX, currentCanvasRelativeY);
 	}
 
 	function showBrushCursor(event: MouseEvent) {
@@ -607,7 +628,6 @@
 		channels: number = 3
 	) {
 		const hwcBuffer = new Uint8Array(width * height * channels);
-
 		for (let c = 0; c < channels; c++) {
 			for (let h = 0; h < height; h++) {
 				for (let w = 0; w < width; w++) {
@@ -626,15 +646,9 @@
 		img_height: number,
 		img_width: number
 	) {
-		// Create an ImageData object
-		// const canvasContext = canvas.getContext('2d');
-		// canvas.width = img_width;
-		// canvas.height = img_height;
-		// Clear the canvas
 
 		let dataRGBBufferReshaped = reshapeCHWtoHWC(imageDataRGB, img_width, img_height);
 		let imgDataBuffer = new Uint8ClampedArray(img_height * img_width * 4);
-
 		// fill the imgData buffer, adding alpha channel
 		for (let i = 0; i < img_height * img_width; i++) {
 			imgDataBuffer[i * 4] = dataRGBBufferReshaped[i * 3];
@@ -643,12 +657,11 @@
 			imgDataBuffer[i * 4 + 3] = 255;
 		}
 
-		// const reshaped = reshapeCHWtoHWC(imageData, img_width, img_height);
 		// Draw the ImageData onto the canvas
 		return new ImageData(imgDataBuffer, img_width, img_height);
 	}
 
-	async function runInpainting(currentEditorState: editorState): Promise<ImageData> {
+	async function runInpainting(currentEditorState: editorState): Promise<void> {
 		let imgUInt8Array = imgDataToRGBArray(currentEditorState.imgData).rgbArray;
 		let nchwBuffer = reshapeBufferToNCHW(
 			imgUInt8Array,
@@ -657,42 +670,31 @@
 			imageCanvas.width,
 			imageCanvas.height
 		);
-		let imgNCHWTensor = new ort.Tensor('uint8', nchwBuffer, [
-			1,
-			3,
-			imageCanvas.height,
-			imageCanvas.width
-		]);
-
 		//combine currentstate brushmask and sammask with or
 		let maskArrayCombined = currentEditorState.maskBrush.map((row: boolean[], y: number) =>
 			row.map((val, x) => val || currentEditorState.maskSAMDilated[y][x])
 		);
 
 		let maskUInt8Buffer = booleanMaskToUint8Buffer(maskArrayCombined);
-		let maskNCHWTensor = new ort.Tensor('uint8', maskUInt8Buffer, [
-			1,
-			1,
-			imageCanvas.height,
-			imageCanvas.width
-		]);
-		$mainWorker?.postMessage({ type: MESSAGE_TYPES.TEST, data: {"imgdata": imgNCHWTensor, "maskdata":maskNCHWTensor }});
+		$mainWorker?.postMessage({
+			type: MESSAGE_TYPES.INPAINTING_RUN,
+			data: {
+				imageTensorData: {
+					data: nchwBuffer,
+					dims: [1, 3, imageCanvas.height, imageCanvas.width]
+				},
 
-		const output = await onnxSessionMIGAN?.run({ image: imgNCHWTensor, mask: maskNCHWTensor });
-
-		let result: Uint8Array = output!['result'].data as Uint8Array;
-		let resultImgData = RGB_CHW_array_to_imageData(result, imageCanvas.height, imageCanvas.width);
-		return resultImgData;
+				maskTensorData: {
+					data: maskUInt8Buffer,
+					dims: [1, 1, imageCanvas.height, imageCanvas.width]
+				}
+			}
+		});
 	}
 
 	async function handleInpainting() {
 		inpaintingRunning = true;
-		//find more efficient way if there is any
-		setTimeout(async () => {			
-			const inpaintedImgData = await runInpainting(currentEditorState);
-			setInpaintedImgEditorState(inpaintedImgData);
-			inpaintingRunning = false;
-		}, 10);
+		runInpainting(currentEditorState);
 	}
 
 	function renderEditorState(
@@ -757,18 +759,12 @@
 			imgData: inpaintedImgData,
 			currentImgEmbedding: undefined
 		};
-		renderEditorState(newEditorState, imageCanvas, maskCanvas);
+		currentEditorState = newEditorState;
+
+		renderEditorState(currentEditorState, imageCanvas, maskCanvas);
 
 		isEmbedderRunning = true;
-
-		setTimeout(() => {
-			if (!onnxSession) return;
-			runModelEncoder(onnxSession, currentEditorState.imgData).then((newEmbedding) => {
-				newEditorState.currentImgEmbedding = newEmbedding;
-				currentEditorState = newEditorState;
-				isEmbedderRunning = false;
-			});
-		}, 0);
+		runModelEncoder(currentEditorState.imgData);
 	}
 
 	function downloadImage(imageData: ImageData) {
@@ -882,11 +878,11 @@
 	async function loadOnnxModels() {
 		try {
 			onnxSession = await ort.InferenceSession.create(mobileSAMEncoderPath, {
-				executionProviders: ['cpu'],
+				executionProviders: ['wasm'],
 				graphOptimizationLevel: 'all'
 			});
 			onnxSessionMIGAN = await ort.InferenceSession.create(mobile_inpainting_GAN, {
-				executionProviders: ['cpu'],
+				executionProviders: ['wasm'],
 				graphOptimizationLevel: 'all'
 			});
 		} catch (error) {
@@ -895,7 +891,7 @@
 	}
 
 	onMount(async () => {
-		if($uploadedImgBase64 === null || $uploadedImgFileName === ""){
+		if ($uploadedImgBase64 === null || $uploadedImgFileName === '') {
 			goto('/');
 		}
 
@@ -929,15 +925,13 @@
 			console.error('models not loaded');
 			return;
 		} else {
-			console.log('model loaded');
+			// console.log('model loaded');
 		}
 		isLoading = false;
 		setupEditor(uploadedImage, $uploadedImgFileName);
 	});
 	const drawerStore = getDrawerStore();
-
 </script>
-
 
 <Drawer>
 	<h2 class="p-4 font-semibold">Smart object remover</h2>
@@ -987,7 +981,8 @@
 			{:else if selectedTool === 'segment_anything'}
 				<label for="sammodeselect" class="font-semibold">Select smart selector mode:</label>
 				<div class="font-thin">
-					Add positive (adds area to selection) or negative (removes area from selection) points for selection
+					Add positive (adds area to selection) or negative (removes area from selection) points for
+					selection
 				</div>
 				<RadioGroup id="sammodeselect" class="text-token mb-4">
 					<RadioItem bind:group={selectedSAMMode} name="sammode" value="positive">
@@ -998,9 +993,7 @@
 					</RadioItem>
 				</RadioGroup>
 				<label for="pixelsDilatation">Mask dilatation: {pixelsDilatation}</label>
-				<div class="font-thin">
-					For best results, all edges of object should be inside the mask
-				</div>
+				<div class="font-thin">For best results, all edges of object should be inside the mask</div>
 				<input type="range" min="0" max="25" bind:value={pixelsDilatation} />
 			{/if}
 		</div>
@@ -1008,7 +1001,6 @@
 </Drawer>
 
 <AppShell slotSidebarLeft="overflow-visible lg:w-80 w-0 h-full shadow-md">
-
 	<svelte:fragment slot="header">
 		<AppBar>
 			<svelte:fragment slot="lead">
@@ -1023,7 +1015,7 @@
 				</button>
 				<a href="/" class="font-bold">Smart Object remover</a>
 			</svelte:fragment>
-			<svelte:fragment  slot="trail">
+			<svelte:fragment slot="trail">
 				<a href="/" class="font-semibold">Home</a>
 				<a href="/about" class="font-semibold">About</a>
 				<LightSwitch />
@@ -1077,7 +1069,8 @@
 				{:else if selectedTool === 'segment_anything'}
 					<label for="sammodeselect" class="font-semibold">Select smart selector mode:</label>
 					<div class="font-thin">
-						Add positive (adds area to selection) or negative (removes area from selection) points for selection
+						Add positive (adds area to selection) or negative (removes area from selection) points
+						for selection
 					</div>
 					<RadioGroup id="sammodeselect" class="text-token mb-4">
 						<RadioItem bind:group={selectedSAMMode} name="sammode" value="positive">
@@ -1096,7 +1089,7 @@
 			</div>
 		</TabGroup>
 	</svelte:fragment>
-	<div class="2xl:px-64 xl:px-16 md:px-8 px-3  py-4">
+	<div class="2xl:px-64 xl:px-16 md:px-8 px-3 py-4">
 		<!-- top buttons panel -->
 		<div class="flex pb-4 justify-between">
 			<!-- left buttons -->
@@ -1104,21 +1097,27 @@
 				<button
 					class="btn btn-sm lg:btn-md variant-filled"
 					on:click={undoLastAction}
-					disabled={editorStatesHistory.length === 0 || anythingLoading}><Undo class="lg:w-6 lg:h-6 w-4 h-4" /></button
+					disabled={editorStatesHistory.length === 0 || anythingLoading}
+					><Undo class="lg:w-6 lg:h-6 w-4 h-4" /></button
 				>
 				<button
 					class="btn btn-sm lg:btn-md variant-filled"
 					on:click={redoLastAction}
-					disabled={editorStatesUndoed.length === 0 || anythingLoading}><Redo class="lg:w-6 lg:h-6 w-4 h-4" /></button
+					disabled={editorStatesUndoed.length === 0 || anythingLoading}
+					><Redo class="lg:w-6 lg:h-6 w-4 h-4" /></button
 				>
-				<button disabled={anythingLoading} class="btn btn-sm lg:btn-md variant-filled" on:click={reset}><RotateCw class="lg:w-6 lg:h-6 w-4 h-4"/></button>
+				<button
+					disabled={anythingLoading}
+					class="btn btn-sm lg:btn-md variant-filled"
+					on:click={reset}><RotateCw class="lg:w-6 lg:h-6 w-4 h-4" /></button
+				>
 			</div>
 
 			<!-- right buttons -->
 			<div class="flex lg:gap-x-2 gap-x-1">
 				<button
 					disabled={anythingLoading}
-					class="btn btn-sm lg:btn-md variant-filled "
+					class="btn btn-sm lg:btn-md variant-filled"
 					on:mousedown={() => {
 						maskCanvas.style.display = 'none';
 						imageCanvas.style.display = 'none';
@@ -1133,7 +1132,6 @@
 					<span class="hidden sm:inline no-margin">Hold to compare</span>
 					<span class="no-margin sm:hidden">Compare</span>
 				</button>
-				
 
 				<!-- <RadioGroup class="text-token">
 					<RadioItem bind:group={beforeAfterMode} name="before_after" value="before">
@@ -1146,38 +1144,43 @@
 
 				<button
 					disabled={anythingLoading}
-
 					class="btn btn-sm lg:btn-md variant-filled"
 					on:click={() => downloadImage(currentEditorState.imgData)}
 				>
-					<span class="flex gap-x-2 items-center"><HardDriveDownload class="lg:w-6 lg:h-6 w-4 h-4" /> Download </span>
+					<span class="flex gap-x-2 items-center"
+						><HardDriveDownload class="lg:w-6 lg:h-6 w-4 h-4" /> Download
+					</span>
 				</button>
 			</div>
 		</div>
 		<!-- editor canvases-->
 		<div
-		class="canvases "
-		bind:this={canvasesContainer}
-		style="cursor: {selectedTool === 'segment_anything'
+			class="canvases"
+			bind:this={canvasesContainer}
+			style="cursor: {(anythingLoading ? 'not-allowed' : (selectedTool === 'segment_anything'
 				? 'default'
-				: currentCursor === 'default'
+				: (currentCursor === 'default'
 				? 'auto'
-				: 'none'}"
+				: 'none')))}"
 		>
-		<div
-		class="relative"
-		on:mouseenter={showBrushCursor}
-		on:mouseleave={hideBrushCursor}
-		role="group"
-		>
-		<div class='absolute w-full h-full flex items-center justify-center z-50 {(!anythingLoading)? "hidden" : ""}'>
-			<ProgressRadial  meter="stroke-primary-500" track="stroke-primary-500/30" />
-		</div>
+			<div
+				class="relative"
+				on:mouseenter={showBrushCursor}
+				on:mouseleave={hideBrushCursor}
+				role="group"
+			>
+				<div
+					class="absolute w-full h-full flex items-center justify-center z-50 {!anythingLoading
+						? 'hidden'
+						: ''}"
+				>
+					<ProgressRadial meter="stroke-primary-500" track="stroke-primary-500/30" />
+				</div>
 				<div class="absolute w-full h-full overflow-hidden">
 					<div
 						id="brushToolCursor"
 						style="
-		display: {selectedTool === 'segment_anything'
+		display: {(selectedTool === 'segment_anything' || anythingLoading)
 							? 'none'
 							: currentCursor === 'default'
 							? 'none'
@@ -1193,10 +1196,14 @@
 	"
 					/>
 				</div>
-				<canvas class="shadow-lg {anythingLoading? "opacity-50 cursor-not-allowed" : ""}" id="imageCanvas" bind:this={imageCanvas} />
+				<canvas
+					class="shadow-lg {anythingLoading ? 'opacity-50 cursor-not-allowed' : ''}"
+					id="imageCanvas"
+					bind:this={imageCanvas}
+				/>
 				<canvas
 					id="maskCanvas"
-					class={anythingLoading? "opacity-50 cursor-not-allowed" : ""}
+					class={anythingLoading ? 'opacity-50 cursor-not-allowed' : ''}
 					bind:this={maskCanvas}
 					on:mousedown={selectedTool === 'brush' ? startPainting : undefined}
 					on:mouseup={selectedTool === 'brush' ? stopPainting : undefined}
@@ -1208,7 +1215,7 @@
 					on:contextmenu={selectedTool === 'segment_anything' ? handleCanvasClick : undefined}
 				/>
 				<img
-					class="shadow-lg {anythingLoading? "opacity-50 cursor-not-allowed" : ""}"
+					class="shadow-lg {anythingLoading ? 'opacity-50 cursor-not-allowed' : ''}"
 					src={$uploadedImgBase64}
 					alt="originalImage"
 					bind:this={originalImgElement}
@@ -1221,7 +1228,7 @@
 			<button
 				class="btn lg:btn-xl btn-lg variant-filled-primary text-white dark:text-white font-semibold"
 				disabled={anythingLoading}
-				on:click={async() => handleInpainting()}
+				on:click={async () => handleInpainting()}
 			>
 				<span class="flex gap-x-2 items-center"><WandSparkles size={18} /> Remove </span></button
 			>
@@ -1237,7 +1244,7 @@
 		height: 100%;
 		display: block;
 	}
-	
+
 	.canvases #maskCanvas {
 		position: absolute;
 	}
@@ -1260,8 +1267,7 @@
 	.canvases img {
 		display: none;
 	}
-	.no-margin{
+	.no-margin {
 		margin: 0 !important;
-
 	}
 </style>
