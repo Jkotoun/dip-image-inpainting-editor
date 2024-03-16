@@ -11,18 +11,11 @@
 		Redo,
 		RotateCw,
 		Eraser,
-		Download,
 		HardDriveDownload,
-		AlignCenter,
-		Plus,
-		Minus,
-		PlusCircle,
 		PlusCircleIcon,
 		MinusCircle
 	} from 'lucide-svelte';
-	// import { Tensor } from 'onnxruntime-web';
-
-	import * as ort from 'onnxruntime-web';
+	import { Tensor } from 'onnxruntime-web';
 	import {
 		AppBar,
 		AppShell,
@@ -36,26 +29,11 @@
 		TabGroup
 	} from '@skeletonlabs/skeleton';
 	import { goto } from '$app/navigation';
-	// import * as ort from 'onnxruntime-web/webgpu';
-	//models paths
-	const mobileSAMEncoderPath = '/mobile_sam.encoder.onnx';
-	// const mobileSAMDecoderPath = '/tfjs_decoder_mobile/model.json';
-	const mobileSAMDecoderPath = '/tfjs_tiny_decoder_quantized/model.json';
-
-	const mobile_inpainting_GAN = '/migan_pipeline_v2.onnx';
 
 	let uploadedImage: string | null = null;
 
 	//types definition
 	type pointType = 'positive' | 'negative';
-	// interface modelInputInterface {
-	// 	image_embeddings: tf.Tensor;
-	// 	point_coords: tf.Tensor;
-	// 	point_labels: tf.Tensor;
-	// 	mask_input: tf.Tensor;
-	// 	has_mask_input: tf.Tensor;
-	// 	orig_im_size: tf.Tensor;
-	// }
 
 	//interface interaction globals
 	interface loadedImgRGBData {
@@ -71,19 +49,9 @@
 	$: anythingLoading = inpaintingRunning || isLoading || isEmbedderRunning || decoderLoading;
 	//segmentation model constants
 	const longSideLength = 1024;
-	let model: tf.GraphModel<string | tf.io.IOHandler>;
-	let onnxSession: ort.InferenceSession | null = null;
-	let onnxSessionMIGAN: ort.InferenceSession | null = null;
 	let resizedImgWidth: number;
 	let resizedImgHeight: number;
-	// let loadedImgRGB: loadedImgRGBData;
 
-	//inpaint model constants
-	let inpaintedImgCanvas: any;
-
-	//editor globals - image and canvas interactions
-	let imagebase64URL: any;
-	// let uploadedImage: HTMLImageElement | null = null;
 	let ImgResToCanvasSizeRatio: number = 1;
 	let imageCanvas: any;
 	let canvasesContainer: any;
@@ -99,7 +67,6 @@
 		type: pointType;
 	}
 
-	// let clickedPositions: SAMmarker[] = [];
 
 	//editor state management
 	interface editorState {
@@ -129,22 +96,6 @@
 	let selectedTool: 'brush' | 'segment_anything' = 'segment_anything';
 	let selectedSAMMode: 'positive' | 'negative' = 'positive';
 
-	// let beforeAfterMode: 'before' | 'after' = 'after';
-	// $: handleBeforeAfterSwitch(beforeAfterMode);
-
-	// function handleBeforeAfterSwitch(mode: 'before' | 'after') {
-	// 		if(maskCanvas && imageCanvas && originalImgElement){
-	// 			if (mode === 'before') {
-	// 				maskCanvas.style.display = 'none';
-	// 				imageCanvas.style.display = 'none';
-	// 				originalImgElement.style.display = 'block';
-	// 			} else if (mode === 'after') {
-	// 				maskCanvas.style.display = 'block';
-	// 				imageCanvas.style.display = 'block';
-	// 				originalImgElement.style.display = 'none';
-	// 			}
-	// 		}
-	// }
 
 	function changeDilatation(pixelsDilatation: number) {
 		if (currentEditorState) {
@@ -295,7 +246,7 @@
 		let resizedImgRGBData = await getResizedImgRGBArray(imageData, longSideLength);
 		// const input = new Float32Array(imgTensor.dataSync());
 		let floatArray = Float32Array.from(resizedImgRGBData.rgbArray);
-		const inputTensor = new ort.Tensor('float32', floatArray, [
+		const inputTensor = new Tensor('float32', floatArray, [
 			resizedImgRGBData.height,
 			resizedImgRGBData.width,
 			3
@@ -874,21 +825,6 @@
 		return dilatedMask;
 	}
 
-	//ONMOUNT MODELS LOADINGS FUNCTIONS
-	async function loadOnnxModels() {
-		try {
-			onnxSession = await ort.InferenceSession.create(mobileSAMEncoderPath, {
-				executionProviders: ['wasm'],
-				graphOptimizationLevel: 'all'
-			});
-			onnxSessionMIGAN = await ort.InferenceSession.create(mobile_inpainting_GAN, {
-				executionProviders: ['wasm'],
-				graphOptimizationLevel: 'all'
-			});
-		} catch (error) {
-			console.error('Error loading the ONNX model:', error);
-		}
-	}
 
 	onMount(async () => {
 		if ($uploadedImgBase64 === null || $uploadedImgFileName === '') {
@@ -901,32 +837,13 @@
 				ImgResToCanvasSizeRatio = imageCanvas.width / canvasElementSize.width;
 			}
 		});
-		await tf.ready();
-		try {
-			await import('@tensorflow/tfjs-backend-webgpu');
-			await tf.setBackend('webgpu');
-			// console.log('webgpu loaded');
-		} catch (e) {
-			try {
-				await tf.setBackend('webgl');
-			} catch (e) {
-				console.error('could not load backend:', e);
-				throw e;
-			}
-		}
-		await loadOnnxModels();
-		model = await tf.loadGraphModel(mobileSAMDecoderPath);
+		
 		uploadedImage = $uploadedImgBase64;
 
 		if (!uploadedImage) {
 			return;
 		}
-		if (!onnxSession || !onnxSessionMIGAN) {
-			console.error('models not loaded');
-			return;
-		} else {
-			// console.log('model loaded');
-		}
+	
 		isLoading = false;
 		setupEditor(uploadedImage, $uploadedImgFileName);
 	});
@@ -1132,15 +1049,6 @@
 					<span class="hidden sm:inline no-margin">Hold to compare</span>
 					<span class="no-margin sm:hidden">Compare</span>
 				</button>
-
-				<!-- <RadioGroup class="text-token">
-					<RadioItem bind:group={beforeAfterMode} name="before_after" value="before">
-						Before
-					</RadioItem>
-					<RadioItem bind:group={beforeAfterMode} name="before_after" value="after">
-						After
-					</RadioItem>
-				</RadioGroup> -->
 
 				<button
 					disabled={anythingLoading}
