@@ -6,8 +6,6 @@
 	import { mainWorker } from '../stores/workerStore';
 	import { AppBar, AppShell, FileDropzone, LightSwitch } from '@skeletonlabs/skeleton';
 	import { FileUp } from 'lucide-svelte';
-	
-	// import { workerStore } from '../stores/workerStore.js';
 	import { onMount } from 'svelte';
 	interface cardProps {
 		title: string;
@@ -67,10 +65,6 @@
 	});
 </script>
 
-<!-- <h1 class="text-3xl font-bold underline">
-  Object remover
-</h1> -->
-
 <AppShell>
 	<svelte:fragment slot="header">
 		<AppBar>
@@ -86,7 +80,6 @@
 	</svelte:fragment>
 
 	<div>
-		<!-- <input type="file" accept="image/*" on:change={(e) => handleImageUpload(e)} /> -->
 		<div class="py-4 2xl:px-32 px-8">
 			<h1 class="h1 pt-8 font-bold">Remove objects from images with powerful AI tools</h1>
 			<h3 class="h3 pt-4">
@@ -111,7 +104,6 @@
 					<svelte:fragment slot="message"
 						><span class="font-semibold">Upload an image or drag and drop</span></svelte:fragment
 					>
-					<!-- <svelte:fragment slot="meta"></svelte:fragment> -->
 				</FileDropzone>
 			</div>
 

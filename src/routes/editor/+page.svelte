@@ -42,11 +42,11 @@
 		height: number;
 	}
 
-	let isLoading = true;
+	let modelsLoading = true;
 	let isEmbedderRunning = false;
 	let decoderLoading = false;
 	let inpaintingRunning = false;
-	$: anythingLoading = inpaintingRunning || isLoading || isEmbedderRunning || decoderLoading;
+	$: anythingLoading = inpaintingRunning || modelsLoading || isEmbedderRunning || decoderLoading;
 	//segmentation model constants
 	const longSideLength = 1024;
 	let resizedImgWidth: number;
@@ -66,7 +66,6 @@
 		y: number;
 		type: pointType;
 	}
-
 
 	//editor state management
 	interface editorState {
@@ -96,7 +95,6 @@
 	let selectedTool: 'brush' | 'segment_anything' = 'segment_anything';
 	let selectedSAMMode: 'positive' | 'negative' = 'positive';
 
-
 	function changeDilatation(pixelsDilatation: number) {
 		if (currentEditorState) {
 			currentEditorState.maskSAMDilated = dilateMaskByPixels(
@@ -109,29 +107,42 @@
 
 	$: changeDilatation(pixelsDilatation);
 
+	function handleWorkerModelsMessages(event: MessageEvent<any>) {
+		const { data, type } = event.data;
+		// if(type === MESSAGE_TYPES)
+		if (type === MESSAGE_TYPES.DECODER_RUN_RESULT) {
+			const SAMMaskArray = data.map((val: number[]) => val.map((v) => v > 0.0));
+			if (SAMMaskArray) {
+				currentEditorState.maskSAM = SAMMaskArray;
+				currentEditorState.maskSAMDilated = dilateMaskByPixels(pixelsDilatation, SAMMaskArray);
+				renderEditorState(currentEditorState, imageCanvas, maskCanvas);
+			}
+			decoderLoading = false;
+		} else if (type === MESSAGE_TYPES.ENCODER_RUN_RESULT) {
+			let img_tensor = tf.tensor(data.embeddings as any, data.dims as any, 'float32');
+			currentEditorState.currentImgEmbedding = img_tensor;
+			isEmbedderRunning = false;
+		} else if (type === MESSAGE_TYPES.INPAINTING_RUN_RESULT) {
+			let resultImgData = RGB_CHW_array_to_imageData(data, imageCanvas.height, imageCanvas.width);
+			setInpaintedImgEditorState(resultImgData);
+			inpaintingRunning = false;
+		}
+	}
+
 	if ($mainWorker) {
-		$mainWorker.onmessage = function (event) {
-			const { data, type } = event.data;
-			if (type === MESSAGE_TYPES.DECODER_RUN_RESULT) {
-				const SAMMaskArray = data.map((val: number[]) => val.map((v) => v > 0.0));
-				if (SAMMaskArray) {
-					currentEditorState.maskSAM = SAMMaskArray;
-					currentEditorState.maskSAMDilated = dilateMaskByPixels(pixelsDilatation, SAMMaskArray);
-					renderEditorState(currentEditorState, imageCanvas, maskCanvas);
-				}
-				decoderLoading = false;
-			} else if (type === MESSAGE_TYPES.ENCODER_RUN_RESULT) {
-				let img_tensor = tf.tensor(data.embeddings as any, data.dims as any, 'float32');
-				currentEditorState.currentImgEmbedding = img_tensor;
-				isEmbedderRunning = false;
-			} else if (type === MESSAGE_TYPES.INPAINTING_RUN_RESULT) {
-				let resultImgData = RGB_CHW_array_to_imageData(data, imageCanvas.height, imageCanvas.width);
-				setInpaintedImgEditorState(resultImgData);
-				inpaintingRunning = false;
+		$mainWorker.onmessage = async (event) => {
+			const { type } = event.data;
+			if (type === MESSAGE_TYPES.MODELS_LOADED) {
+				modelsLoading = false;
+				$mainWorker!.onmessage = handleWorkerModelsMessages;
+				isEmbedderRunning = true;
+				await runModelEncoder(currentEditorState.imgData);
+				// Continue with your logic here...
+			} else if (type === MESSAGE_TYPES.MODELS_STILL_LOADING) {
 			}
 		};
 	} else {
-		console.error('no worker found');
+		goto('/');
 	}
 
 	//EMBEDDING FUNCTIONS
@@ -232,25 +243,13 @@
 				currentImgEmbedding: undefined
 			} as editorState;
 
-			isEmbedderRunning = true;
-			runModelEncoder(currentEditorState.imgData);
 			//0s timeout to handle UI loading state
 		};
 	};
 
-	async function runModelEncoder(
-		// embedderOnnxSession: ort.InferenceSession,
-		imageData: ImageData
-		// imgRGBData: loadedImgRGBData
-	): Promise<void> {
+	async function runModelEncoder(imageData: ImageData): Promise<void> {
 		let resizedImgRGBData = await getResizedImgRGBArray(imageData, longSideLength);
-		// const input = new Float32Array(imgTensor.dataSync());
 		let floatArray = Float32Array.from(resizedImgRGBData.rgbArray);
-		const inputTensor = new Tensor('float32', floatArray, [
-			resizedImgRGBData.height,
-			resizedImgRGBData.width,
-			3
-		]);
 		$mainWorker?.postMessage({
 			type: MESSAGE_TYPES.ENCODER_RUN,
 			data: {
@@ -258,7 +257,6 @@
 				dims: [resizedImgRGBData.height, resizedImgRGBData.width, 3]
 			}
 		});
-
 	}
 
 	//DECODER MODEL FUNCTIONS
@@ -349,6 +347,9 @@
 	}
 
 	async function handleCanvasClick(event: MouseEvent) {
+		if (anythingLoading) {
+			return;
+		}
 		//it logs -0 at 0,0 for some reason
 		event.preventDefault();
 		const xScaled = Math.abs(event.offsetX) * ImgResToCanvasSizeRatio;
@@ -597,7 +598,6 @@
 		img_height: number,
 		img_width: number
 	) {
-
 		let dataRGBBufferReshaped = reshapeCHWtoHWC(imageDataRGB, img_width, img_height);
 		let imgDataBuffer = new Uint8ClampedArray(img_height * img_width * 4);
 		// fill the imgData buffer, adding alpha channel
@@ -644,8 +644,10 @@
 	}
 
 	async function handleInpainting() {
-		inpaintingRunning = true;
-		runInpainting(currentEditorState);
+		if (!anythingLoading) {
+			inpaintingRunning = true;
+			runInpainting(currentEditorState);
+		}
 	}
 
 	function renderEditorState(
@@ -825,27 +827,31 @@
 		return dilatedMask;
 	}
 
-
 	onMount(async () => {
 		if ($uploadedImgBase64 === null || $uploadedImgFileName === '') {
 			goto('/');
 		}
-
+		uploadedImage = $uploadedImgBase64;
 		window.addEventListener('resize', () => {
 			if (imageCanvas) {
 				const canvasElementSize = imageCanvas.getBoundingClientRect();
 				ImgResToCanvasSizeRatio = imageCanvas.width / canvasElementSize.width;
 			}
 		});
-		
-		uploadedImage = $uploadedImgBase64;
-
-		if (!uploadedImage) {
+		if (!uploadedImage || !uploadedImgFileName) {
+			goto('/');
 			return;
 		}
-	
-		isLoading = false;
-		setupEditor(uploadedImage, $uploadedImgFileName);
+		await setupEditor(uploadedImage, $uploadedImgFileName);
+
+		if (!$mainWorker) {
+			goto('/');
+		} else {
+			/*mainworker has set modelsLoaded function callback (setups editor etc.)
+			it is called either based on response to this message or after models are loaded 
+			(then, the message is sent automatically after loading)*/
+			$mainWorker.postMessage({ type: MESSAGE_TYPES.CHECK_MODELS_LOADING_STATE });
+		}
 	});
 	const drawerStore = getDrawerStore();
 </script>
@@ -1065,11 +1071,13 @@
 		<div
 			class="canvases"
 			bind:this={canvasesContainer}
-			style="cursor: {(anythingLoading ? 'not-allowed' : (selectedTool === 'segment_anything'
+			style="cursor: {anythingLoading
+				? 'not-allowed'
+				: selectedTool === 'segment_anything'
 				? 'default'
-				: (currentCursor === 'default'
+				: currentCursor === 'default'
 				? 'auto'
-				: 'none')))}"
+				: 'none'}"
 		>
 			<div
 				class="relative"
@@ -1078,17 +1086,28 @@
 				role="group"
 			>
 				<div
-					class="absolute w-full h-full flex items-center justify-center z-50 {!anythingLoading
+					class="absolute w-full h-full flex items-center flex-col gap-y-2 justify-center z-50 {!anythingLoading
 						? 'hidden'
 						: ''}"
 				>
 					<ProgressRadial meter="stroke-primary-500" track="stroke-primary-500/30" />
+					{#if modelsLoading}
+						<div class="text-primary-500  font-bold text-2xl mt-2">Models loading...</div>
+					{:else if inpaintingRunning}
+						<div class="text-primary-500  font-bold text-2xl mt-2">Removing area...</div>
+					{:else if isEmbedderRunning}
+						<div class="text-primary-500  font-bold text-2xl mt-2">
+							Processing new image...
+						</div>
+					{:else if decoderLoading}
+						<div class="text-primary-500  font-bold text-2xl mt-2">Computing mask...</div>
+					{/if}
 				</div>
 				<div class="absolute w-full h-full overflow-hidden">
 					<div
 						id="brushToolCursor"
 						style="
-		display: {(selectedTool === 'segment_anything' || anythingLoading)
+		display: {selectedTool === 'segment_anything' || anythingLoading
 							? 'none'
 							: currentCursor === 'default'
 							? 'none'
@@ -1104,14 +1123,15 @@
 	"
 					/>
 				</div>
+				<!-- default width so the page isnt empty till load -->
 				<canvas
-					class="shadow-lg {anythingLoading ? 'opacity-50 cursor-not-allowed' : ''}"
+					class="shadow-lg {anythingLoading ? 'opacity-30 cursor-not-allowed' : ''}"
 					id="imageCanvas"
 					bind:this={imageCanvas}
 				/>
 				<canvas
 					id="maskCanvas"
-					class={anythingLoading ? 'opacity-50 cursor-not-allowed' : ''}
+					class={anythingLoading ? 'opacity-30 cursor-not-allowed' : ''}
 					bind:this={maskCanvas}
 					on:mousedown={selectedTool === 'brush' ? startPainting : undefined}
 					on:mouseup={selectedTool === 'brush' ? stopPainting : undefined}

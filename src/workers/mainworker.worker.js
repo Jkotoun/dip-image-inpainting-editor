@@ -22,12 +22,10 @@ async function loadModels() {
         graphOptimizationLevel: 'all'
     });
     encoderReady = true;
-    console.log("encoder loaded")
     await tf.ready();
     try {
         await import('@tensorflow/tfjs-backend-webgpu');
         await tf.setBackend('webgpu');
-        console.log('webgpu loaded');
     } catch (e) {
         try {
             await tf.setBackend('webgl');
@@ -38,30 +36,35 @@ async function loadModels() {
     }
     tfjsDecoder = await tf.loadGraphModel(mobileSAMDecoderPath);
     decoderReady = true;
-    console.log("decoder loaded")
-
-
     miganOnnxSession = await ort.InferenceSession.create(mobile_inpainting_GAN, {
         executionProviders: ['wasm'],
         graphOptimizationLevel: 'all'
     });
     inpainterReady = true;
-    console.log("inpainter loaded")
+    self.postMessage({ type: MESSAGE_TYPES.MODELS_LOADED, data: "Models loaded" });
 }
 
-loadModels();    
+loadModels();
+
+
 
 
 
 self.onmessage = async function (event) {
     const { type, data } = event.data;
-    // console.log(`recieved  ${type} type of message`);
-
-    if (type === MESSAGE_TYPES.DECODER_RUN) {
+    if (type === MESSAGE_TYPES.CHECK_MODELS_LOADING_STATE) {
+        if (encoderReady && decoderReady && inpainterReady) {
+            self.postMessage({ type: MESSAGE_TYPES.MODELS_LOADED, data: "Models loaded" });
+        }
+        else {
+            self.postMessage({ type: MESSAGE_TYPES.MODELS_STILL_LOADING, data: "Models not loaded" });
+        }
+    }
+    else if (type === MESSAGE_TYPES.DECODER_RUN && decoderReady) {
         const decoderResult = await runDecoder(data);
         self.postMessage({ type: MESSAGE_TYPES.DECODER_RUN_RESULT, data: decoderResult });
     }
-    else if (type === MESSAGE_TYPES.ENCODER_RUN) {
+    else if (type === MESSAGE_TYPES.ENCODER_RUN && encoderReady) {
         const encoderResult = await runEncoder(data);
         self.postMessage({
             type: MESSAGE_TYPES.ENCODER_RUN_RESULT, data: {
@@ -70,16 +73,21 @@ self.onmessage = async function (event) {
             }
         });
     }
-    else if (type === MESSAGE_TYPES.INPAINTING_RUN) {
+    else if (type === MESSAGE_TYPES.INPAINTING_RUN && inpainterReady) {
         const inpaintingResult = await runInpainting(data);
         self.postMessage({ type: MESSAGE_TYPES.INPAINTING_RUN_RESULT, data: inpaintingResult['result'].data });
     }
     else {
-        console.log(data)
         self.postMessage({ type: MESSAGE_TYPES.TEST, data: "Response" });
     }
+    
     // Respond back to the main thread
 };
+
+
+self.onerror = function (event) {
+    console.error(event);
+}
 
 // @ts-ignore
 async function runEncoder(data) {
