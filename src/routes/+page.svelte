@@ -2,20 +2,23 @@
 	import { writable } from 'svelte/store';
 	//   import { goto } from '@sveltejs/kit';
 	import { goto } from '$app/navigation';
-	import { uploadedImgBase64, uploadedImgFileName } from '../stores';
+	import { uploadedImgBase64, uploadedImgFileName } from '../stores/imgStore';
+	import { mainWorker } from '../stores/workerStore';
 	import { AppBar, AppShell, FileDropzone, LightSwitch } from '@skeletonlabs/skeleton';
 	import { FileUp } from 'lucide-svelte';
-
+	
+	// import { workerStore } from '../stores/workerStore.js';
+	import { onMount } from 'svelte';
 	interface cardProps {
 		title: string;
 		description: string;
 		image: string;
 	}
+	let w: Worker;
 	let cards: cardProps[] = [
 		{
 			title: 'Step 1: Upload Your Image',
-			description:
-				'Upload or drag and drop an image into the “Upload Image” frame.',
+			description: 'Upload or drag and drop an image into the “Upload Image” frame.',
 			image: '/img/process_part1.png'
 		},
 		{
@@ -26,14 +29,12 @@
 		},
 		{
 			title: 'Step 3: Remove the area',
-			description:
-				'Click the “Remove” button and wait for the result.',
+			description: 'Click the “Remove” button and wait for the result.',
 			image: '/img/process_part3.png'
 		},
 		{
 			title: 'Step 4: Download the result image',
-			description:
-				'Compare the result with the original image and download the result image.',
+			description: 'Compare the result with the original image and download the result image.',
 			image: '/img/process_part4.png'
 		}
 	];
@@ -57,6 +58,41 @@
 
 		reader.readAsDataURL(uploadedImageFile);
 	};
+
+	onMount(() => {
+		// if (typeof Worker !== 'undefined') {
+		// 	console.log('Yes! Web worker support!');
+		// 	// Yes! Web worker support!
+		// 	// Some code.....
+		// } else {
+		// 	console.log('Sorry! No Web Worker support..');
+		// 	// Sorry! No Web Worker support..
+		// }
+
+		
+		if(!$mainWorker){
+			console.log("registering new worker")
+			w = new Worker('/src/workers/mainworker.worker.js' , { type: "module" });
+			mainWorker.set(w);
+		}
+
+		if($mainWorker){
+			$mainWorker.onmessage = function (event) {
+				console.log("recieved response in main: ", event.data)
+			};
+	
+			$mainWorker.postMessage({type:"init", data:'Important data'});
+		}
+
+
+		// // Send a message to the worker when the component is mounted
+		// workerStore.sendMessage('Hello from main thread');
+
+		// // Listen for messages from the worker
+		// workerStore.receiveMessage((message: any) => {
+		// 	console.log('Received message in App:', message);
+		// });
+	});
 </script>
 
 <!-- <h1 class="text-3xl font-bold underline">
@@ -69,7 +105,7 @@
 			<svelte:fragment slot="lead">
 				<a href="/" class="font-bold">Smart Object remover</a>
 			</svelte:fragment>
-			<svelte:fragment  slot="trail">
+			<svelte:fragment slot="trail">
 				<a href="/" class="font-semibold">Home</a>
 				<a href="/about" class="font-semibold">About</a>
 				<LightSwitch />
@@ -77,60 +113,58 @@
 		</AppBar>
 	</svelte:fragment>
 
-
-
-<div>
-	<!-- <input type="file" accept="image/*" on:change={(e) => handleImageUpload(e)} /> -->
-	<div class="py-4 2xl:px-32 px-8">
-		<h1 class="h1 pt-8 font-bold">Remove objects from images with powerful AI tools</h1>
-		<h3 class="h3 pt-4">
-			Easily remove any unwanted objects, people, defects or text from images with help of
-			AI-powered tools
-		</h3>
-		<div class="md:pt-16 pt-4 flex md:flex-row flex-col-reverse gap-4">
-			<div class="flex-1">
-				<img src="/img/before_after_example.png" alt="before_after_exampler" />
-			</div>
-			<FileDropzone
-				class="flex-1"
-				name="files"
-				accept="image/*"
-				on:change={(e) => handleImageUpload(e)}
-			>
-				<svelte:fragment slot="lead">
-					<div class="flex justify-center">
-						<FileUp size={64} />
-					</div>
-				</svelte:fragment>
-				<svelte:fragment slot="message"
-					><span class="font-semibold">Upload an image or drag and drop</span></svelte:fragment
-				>
-				<!-- <svelte:fragment slot="meta"></svelte:fragment> -->
-			</FileDropzone>
-		</div>
-
-		<h2 class="h2 md:pt-16 md:pb-16 pt-8 pb-8 text-center font-semibold">How does it work?</h2>
-		<div class="">
-
-		
-
-			<div class="w-fit text-token grid grid-cols-1 xl:grid-cols-4 md:grid-cols-2 gap-4">
-				{#each cards as card}
-				<div class="card overflow-hidden">
-					<header>
-						<img src={card.image} class="bg-black/50 w-full h-64 object-cover" alt="Object removal process guide" />
-					</header>
-					<div class="p-8 space-y-4">
-						<h3 class="h3 font-semibold">{card.title}</h3>
-						<article>
-							<p>{card.description}</p>
-						</article>
-					</div>
+	<div>
+		<!-- <input type="file" accept="image/*" on:change={(e) => handleImageUpload(e)} /> -->
+		<div class="py-4 2xl:px-32 px-8">
+			<h1 class="h1 pt-8 font-bold">Remove objects from images with powerful AI tools</h1>
+			<h3 class="h3 pt-4">
+				Easily remove any unwanted objects, people, defects or text from images with help of
+				AI-powered tools
+			</h3>
+			<div class="md:pt-16 pt-4 flex md:flex-row flex-col-reverse gap-4">
+				<div class="flex-1">
+					<img src="/img/before_after_example.png" alt="before_after_exampler" />
 				</div>
-			{/each}
-		
+				<FileDropzone
+					class="flex-1"
+					name="files"
+					accept="image/*"
+					on:change={(e) => handleImageUpload(e)}
+				>
+					<svelte:fragment slot="lead">
+						<div class="flex justify-center">
+							<FileUp size={64} />
+						</div>
+					</svelte:fragment>
+					<svelte:fragment slot="message"
+						><span class="font-semibold">Upload an image or drag and drop</span></svelte:fragment
+					>
+					<!-- <svelte:fragment slot="meta"></svelte:fragment> -->
+				</FileDropzone>
+			</div>
+
+			<h2 class="h2 md:pt-16 md:pb-16 pt-8 pb-8 text-center font-semibold">How does it work?</h2>
+			<div class="">
+				<div class="w-fit text-token grid grid-cols-1 xl:grid-cols-4 md:grid-cols-2 gap-4">
+					{#each cards as card}
+						<div class="card overflow-hidden">
+							<header>
+								<img
+									src={card.image}
+									class="bg-black/50 w-full h-64 object-cover"
+									alt="Object removal process guide"
+								/>
+							</header>
+							<div class="p-8 space-y-4">
+								<h3 class="h3 font-semibold">{card.title}</h3>
+								<article>
+									<p>{card.description}</p>
+								</article>
+							</div>
+						</div>
+					{/each}
+				</div>
 			</div>
 		</div>
 	</div>
-</div>
 </AppShell>

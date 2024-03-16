@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import * as tf from '@tensorflow/tfjs';
-	import { uploadedImgBase64, uploadedImgFileName } from '../../stores';
+	import { uploadedImgBase64, uploadedImgFileName } from '../../stores/imgStore';
+	import { mainWorker } from '../../stores/workerStore';
+	import { MESSAGE_TYPES } from '../../workers/messageTypes';
 	import {
 		Brush,
 		WandSparkles,
@@ -145,6 +147,25 @@
 
 	$: changeDilatation(pixelsDilatation);
 
+	if($mainWorker){
+
+		$mainWorker.onmessage = function (event) {
+			const {data, type} = event.data;
+			if(type===MESSAGE_TYPES.DECODER_RUN_RESULT){
+				const SAMMaskArray = data.map((val: number[]) => val.map((v) => v > 0.0));
+				if(SAMMaskArray){
+					currentEditorState.maskSAM = SAMMaskArray;
+					currentEditorState.maskSAMDilated = dilateMaskByPixels(pixelsDilatation, SAMMaskArray);
+					renderEditorState(currentEditorState, imageCanvas, maskCanvas);
+				}
+				decoderLoading = false;
+			}
+		};
+	}
+	else{
+		console.error("no worker found")
+	}
+
 	//EMBEDDING FUNCTIONS
 	async function getResizedImgRGBArray(
 		img: ImageData,
@@ -268,6 +289,9 @@
 			resizedImgRGBData.width,
 			3
 		]);
+		$mainWorker?.postMessage({ type: MESSAGE_TYPES.TEST, data: inputTensor });
+
+
 		const output = await embedderOnnxSession.run({ input_image: inputTensor });
 		return tf.tensor(
 			output['image_embeddings'].data as any,
@@ -308,6 +332,10 @@
 		);
 		const hasMaskInputTensor = tf.tensor([0], [1], 'float32');
 
+	
+
+
+
 		let modelInput = {
 			image_embeddings: currentEditorState.currentImgEmbedding as tf.Tensor<tf.Rank>,
 			point_coords: pointCoordsTensor,
@@ -325,20 +353,17 @@
 		if (!currentEditorState.currentImgEmbedding) {
 			return;
 		}
+		decoderLoading = true;
 		const modelInput = await createInputDict(currentEditorState);
+		$mainWorker?.postMessage({ type: MESSAGE_TYPES.DECODER_RUN, data: {
+			image_embeddings: {data: modelInput.image_embeddings.dataSync(), dims: modelInput.image_embeddings.shape},
+			point_coords: {data: modelInput.point_coords.dataSync(), dims: modelInput.point_coords.shape},
+			point_labels: {data: modelInput.point_labels.dataSync(), dims: modelInput.point_labels.shape},
+			mask_input: {data: modelInput.mask_input.dataSync(), dims: modelInput.mask_input.shape},
+			has_mask_input: {data: modelInput.has_mask_input.dataSync(), dims: modelInput.has_mask_input.shape},
+			orig_im_size: {data: modelInput.orig_im_size.dataSync(), dims: modelInput.orig_im_size.shape}
 
-		// let data = modelInput.image_embeddings.arraySync();
-		const predictions: any = await model.executeAsync(modelInput);
-		console.log('executed');
-		const lastData = await predictions[predictions.length - 1].arraySync();
-		const data = lastData[0][0];
-
-		//convert to bool array
-		const SAMMaskArray = data.map((val: number[]) => val.map((v) => v > 0.0));
-		return SAMMaskArray;
-		// return dilateMaskByPixels(pixelsDilatation, SAMMaskArray);
-
-		// return SAMMaskArray;
+		} });
 	}
 
 	//EDITOR HANDLING FUNCTIONS
@@ -371,17 +396,7 @@
 		} as editorState;
 		console.log('here');
 		renderEditorState(currentEditorState, imageCanvas, maskCanvas);
-		decoderLoading = true;
-		setTimeout(() => {
-			runModelDecoder(currentEditorState).then((sammask) => {
-				if (sammask) {
-					currentEditorState.maskSAM = sammask;
-					currentEditorState.maskSAMDilated = dilateMaskByPixels(pixelsDilatation, sammask);
-				}
-				renderEditorState(currentEditorState, imageCanvas, maskCanvas);
-				decoderLoading = false;
-			});
-		}, 0);
+		runModelDecoder(currentEditorState)
 	}
 
 	function drawImage(canvas: HTMLCanvasElement, imageData: ImageData) {
@@ -661,6 +676,7 @@
 			imageCanvas.height,
 			imageCanvas.width
 		]);
+		$mainWorker?.postMessage({ type: MESSAGE_TYPES.TEST, data: {"imgdata": imgNCHWTensor, "maskdata":maskNCHWTensor }});
 
 		const output = await onnxSessionMIGAN?.run({ image: imgNCHWTensor, mask: maskNCHWTensor });
 
@@ -866,11 +882,11 @@
 	async function loadOnnxModels() {
 		try {
 			onnxSession = await ort.InferenceSession.create(mobileSAMEncoderPath, {
-				executionProviders: ['wasm'],
+				executionProviders: ['cpu'],
 				graphOptimizationLevel: 'all'
 			});
 			onnxSessionMIGAN = await ort.InferenceSession.create(mobile_inpainting_GAN, {
-				executionProviders: ['wasm'],
+				executionProviders: ['cpu'],
 				graphOptimizationLevel: 'all'
 			});
 		} catch (error) {
@@ -893,7 +909,7 @@
 		try {
 			await import('@tensorflow/tfjs-backend-webgpu');
 			await tf.setBackend('webgpu');
-			console.log('webgpu loaded');
+			// console.log('webgpu loaded');
 		} catch (e) {
 			try {
 				await tf.setBackend('webgl');
