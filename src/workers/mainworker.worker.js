@@ -16,12 +16,13 @@ let miganOnnxSession;
 let tfjsDecoder;
 
 
-async function loadModels() {
+async function loadEncoderDecoder(){
     encoderOnnxSession = await ort.InferenceSession.create(mobileSAMEncoderPath, {
         executionProviders: ['wasm'],
         graphOptimizationLevel: 'all'
     });
     encoderReady = true;
+    console.log("loaded encoder");
     await tf.ready();
     try {
         await import('@tensorflow/tfjs-backend-webgpu');
@@ -36,29 +37,44 @@ async function loadModels() {
     }
     tfjsDecoder = await tf.loadGraphModel(mobileSAMDecoderPath);
     decoderReady = true;
+    console.log("loaded decoder");
+    self.postMessage({ type: MESSAGE_TYPES.ENCODER_DECODER_LOADED, data: "Encoder and decoder loaded" });
+}
+async function loadInpainter(){
     miganOnnxSession = await ort.InferenceSession.create(mobile_inpainting_GAN, {
         executionProviders: ['wasm'],
         graphOptimizationLevel: 'all'
     });
     inpainterReady = true;
-    self.postMessage({ type: MESSAGE_TYPES.MODELS_LOADED, data: "Models loaded" });
+    console.log("loaded inpainter");
+    self.postMessage({ type: MESSAGE_TYPES.INPAINTER_LOADED, data: "Inpainter loaded" });
 }
 
-loadModels();
+loadEncoderDecoder();
 
 
 
-
+async function checkLoadState() {
+    if (encoderReady && decoderReady) {
+        if(inpainterReady){
+            self.postMessage({ type: MESSAGE_TYPES.ALL_MODELS_LOADED, data: "All models loaded" });
+        }
+        else{
+            self.postMessage({ type: MESSAGE_TYPES.ENCODER_DECODER_LOADED, data: "Encoder decoder loaded" });
+        }
+    }
+    else {
+        self.postMessage({ type: MESSAGE_TYPES.NONE_LOADED, data: "Models not loaded" });
+    }
+}
 
 self.onmessage = async function (event) {
     const { type, data } = event.data;
     if (type === MESSAGE_TYPES.CHECK_MODELS_LOADING_STATE) {
-        if (encoderReady && decoderReady && inpainterReady) {
-            self.postMessage({ type: MESSAGE_TYPES.MODELS_LOADED, data: "Models loaded" });
-        }
-        else {
-            self.postMessage({ type: MESSAGE_TYPES.MODELS_STILL_LOADING, data: "Models not loaded" });
-        }
+        checkLoadState();
+    }
+    else if(type === MESSAGE_TYPES.LOAD_INPAINTER){
+        loadInpainter();
     }
     else if (type === MESSAGE_TYPES.DECODER_RUN && decoderReady) {
         const decoderResult = await runDecoder(data);

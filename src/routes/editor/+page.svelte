@@ -42,11 +42,15 @@
 		height: number;
 	}
 
-	let modelsLoading = true;
+	let encoderLoading = true;
+	let decoderLoading = true;
+	let inpainterLoading = true;
 	let isEmbedderRunning = false;
-	let decoderLoading = false;
+	let decoderRunning = false;
 	let inpaintingRunning = false;
-	$: anythingLoading = inpaintingRunning || modelsLoading || isEmbedderRunning || decoderLoading;
+	$: anythingEssentialLoading =
+		inpaintingRunning || encoderLoading || decoderLoading || isEmbedderRunning || decoderRunning;
+
 	//segmentation model constants
 	const longSideLength = 1024;
 	let resizedImgWidth: number;
@@ -95,9 +99,9 @@
 	let selectedTool: 'brush' | 'segment_anything' = 'segment_anything';
 	let selectedSAMMode: 'positive' | 'negative' = 'positive';
 
-	function changeDilatation(pixelsDilatation: number) {
+	async function changeDilatation(pixelsDilatation: number) {
 		if (currentEditorState) {
-			currentEditorState.maskSAMDilated = dilateMaskByPixels(
+			currentEditorState.maskSAMDilated = await dilateMaskByPixels(
 				pixelsDilatation,
 				currentEditorState.maskSAM
 			);
@@ -110,35 +114,50 @@
 	function handleWorkerModelsMessages(event: MessageEvent<any>) {
 		const { data, type } = event.data;
 		// if(type === MESSAGE_TYPES)
-		if (type === MESSAGE_TYPES.DECODER_RUN_RESULT) {
+		if (type === MESSAGE_TYPES.INPAINTER_LOADED) {
+			inpainterLoading = false;
+		}
+		if (type === MESSAGE_TYPES.DECODER_RUN_RESULT && !decoderLoading) {
 			const SAMMaskArray = data.map((val: number[]) => val.map((v) => v > 0.0));
 			if (SAMMaskArray) {
-				currentEditorState.maskSAM = SAMMaskArray;
-				currentEditorState.maskSAMDilated = dilateMaskByPixels(pixelsDilatation, SAMMaskArray);
-				renderEditorState(currentEditorState, imageCanvas, maskCanvas);
+				dilateMaskByPixels(pixelsDilatation, SAMMaskArray).then((dilatedMask) => {
+					currentEditorState.maskSAMDilated = dilatedMask;
+					currentEditorState.maskSAM = SAMMaskArray;
+					renderEditorState(currentEditorState, imageCanvas, maskCanvas);
+				});
 			}
-			decoderLoading = false;
-		} else if (type === MESSAGE_TYPES.ENCODER_RUN_RESULT) {
+			decoderRunning = false;
+		} else if (type === MESSAGE_TYPES.ENCODER_RUN_RESULT && !encoderLoading) {
 			let img_tensor = tf.tensor(data.embeddings as any, data.dims as any, 'float32');
 			currentEditorState.currentImgEmbedding = img_tensor;
 			isEmbedderRunning = false;
-		} else if (type === MESSAGE_TYPES.INPAINTING_RUN_RESULT) {
-			let resultImgData = RGB_CHW_array_to_imageData(data, imageCanvas.height, imageCanvas.width);
-			setInpaintedImgEditorState(resultImgData);
-			inpaintingRunning = false;
+		} else if (type === MESSAGE_TYPES.INPAINTING_RUN_RESULT && !inpainterLoading) {
+			RGB_CHW_array_to_imageData(data, imageCanvas.height, imageCanvas.width).then((resultImgData) => {
+				setInpaintedImgEditorState(resultImgData);
+				inpaintingRunning = false;
+			});
 		}
 	}
 
 	if ($mainWorker) {
 		$mainWorker.onmessage = async (event) => {
 			const { type } = event.data;
-			if (type === MESSAGE_TYPES.MODELS_LOADED) {
-				modelsLoading = false;
+			if (type === MESSAGE_TYPES.ALL_MODELS_LOADED) {
+				console.log('all loaded right away');
+				decoderLoading = encoderLoading = inpainterLoading = false;
 				$mainWorker!.onmessage = handleWorkerModelsMessages;
 				isEmbedderRunning = true;
-				await runModelEncoder(currentEditorState.imgData);
+				runModelEncoder(currentEditorState.imgData);
 				// Continue with your logic here...
-			} else if (type === MESSAGE_TYPES.MODELS_STILL_LOADING) {
+			} else if (type === MESSAGE_TYPES.NONE_LOADED) {
+				console.log('none loaded yet');
+			} else if (type === MESSAGE_TYPES.ENCODER_DECODER_LOADED) {
+				console.log('embedder/decoder loaded, load inpainter also');
+				$mainWorker!.onmessage = handleWorkerModelsMessages;
+				$mainWorker?.postMessage({ type: MESSAGE_TYPES.LOAD_INPAINTER });
+				encoderLoading = decoderLoading = false;
+				isEmbedderRunning = true;
+				runModelEncoder(currentEditorState.imgData);
 			}
 		};
 	} else {
@@ -308,7 +327,7 @@
 		if (!currentEditorState.currentImgEmbedding) {
 			return;
 		}
-		decoderLoading = true;
+		decoderRunning = true;
 		const modelInput = await createInputDict(currentEditorState);
 		$mainWorker?.postMessage({
 			type: MESSAGE_TYPES.DECODER_RUN,
@@ -347,7 +366,7 @@
 	}
 
 	async function handleCanvasClick(event: MouseEvent) {
-		if (anythingLoading) {
+		if (anythingEssentialLoading) {
 			return;
 		}
 		//it logs -0 at 0,0 for some reason
@@ -593,11 +612,11 @@
 		return hwcBuffer;
 	}
 
-	function RGB_CHW_array_to_imageData(
+	async function RGB_CHW_array_to_imageData(
 		imageDataRGB: Uint8Array,
 		img_height: number,
 		img_width: number
-	) {
+	):Promise<ImageData> {
 		let dataRGBBufferReshaped = reshapeCHWtoHWC(imageDataRGB, img_width, img_height);
 		let imgDataBuffer = new Uint8ClampedArray(img_height * img_width * 4);
 		// fill the imgData buffer, adding alpha channel
@@ -644,13 +663,13 @@
 	}
 
 	async function handleInpainting() {
-		if (!anythingLoading) {
+		if (!anythingEssentialLoading) {
 			inpaintingRunning = true;
 			runInpainting(currentEditorState);
 		}
 	}
 
-	function renderEditorState(
+	async function renderEditorState(
 		state: editorState,
 		imageCanvas: HTMLCanvasElement,
 		maskCanvas: HTMLCanvasElement
@@ -696,7 +715,7 @@
 		}
 	}
 
-	function setInpaintedImgEditorState(inpaintedImgData: ImageData) {
+	async function setInpaintedImgEditorState(inpaintedImgData: ImageData) {
 		editorStatesHistory = [...editorStatesHistory, currentEditorState];
 		let newEditorState: editorState = {
 			maskBrush: new Array(imageCanvas.height)
@@ -766,7 +785,10 @@
 	// }
 	type Point = { x: number; y: number };
 
-	function dilateMaskByPixels(dilationPixels: number, mask: boolean[][]): boolean[][] {
+	async function dilateMaskByPixels(
+		dilationPixels: number,
+		mask: boolean[][]
+	): Promise<boolean[][]> {
 		const numRows = mask.length;
 		const numCols = mask[0].length;
 		const directions = [
@@ -1020,17 +1042,17 @@
 				<button
 					class="btn btn-sm lg:btn-md variant-filled"
 					on:click={undoLastAction}
-					disabled={editorStatesHistory.length === 0 || anythingLoading}
+					disabled={editorStatesHistory.length === 0 || anythingEssentialLoading}
 					><Undo class="lg:w-6 lg:h-6 w-4 h-4" /></button
 				>
 				<button
 					class="btn btn-sm lg:btn-md variant-filled"
 					on:click={redoLastAction}
-					disabled={editorStatesUndoed.length === 0 || anythingLoading}
+					disabled={editorStatesUndoed.length === 0 || anythingEssentialLoading}
 					><Redo class="lg:w-6 lg:h-6 w-4 h-4" /></button
 				>
 				<button
-					disabled={anythingLoading}
+					disabled={anythingEssentialLoading}
 					class="btn btn-sm lg:btn-md variant-filled"
 					on:click={reset}><RotateCw class="lg:w-6 lg:h-6 w-4 h-4" /></button
 				>
@@ -1039,7 +1061,7 @@
 			<!-- right buttons -->
 			<div class="flex lg:gap-x-2 gap-x-1">
 				<button
-					disabled={anythingLoading}
+					disabled={anythingEssentialLoading}
 					class="btn btn-sm lg:btn-md variant-filled"
 					on:mousedown={() => {
 						maskCanvas.style.display = 'none';
@@ -1057,7 +1079,7 @@
 				</button>
 
 				<button
-					disabled={anythingLoading}
+					disabled={anythingEssentialLoading}
 					class="btn btn-sm lg:btn-md variant-filled"
 					on:click={() => downloadImage(currentEditorState.imgData)}
 				>
@@ -1071,7 +1093,7 @@
 		<div
 			class="canvases"
 			bind:this={canvasesContainer}
-			style="cursor: {anythingLoading
+			style="cursor: {anythingEssentialLoading
 				? 'not-allowed'
 				: selectedTool === 'segment_anything'
 				? 'default'
@@ -1086,28 +1108,26 @@
 				role="group"
 			>
 				<div
-					class="absolute w-full h-full flex items-center flex-col gap-y-2 justify-center z-50 {!anythingLoading
+					class="absolute w-full h-full flex items-center flex-col gap-y-2 justify-center z-50 {!anythingEssentialLoading
 						? 'hidden'
 						: ''}"
 				>
 					<ProgressRadial meter="stroke-primary-500" track="stroke-primary-500/30" />
-					{#if modelsLoading}
-						<div class="text-primary-500  font-bold text-2xl mt-2">Models loading...</div>
+					{#if encoderLoading || decoderLoading}
+						<div class="text-primary-500 font-bold text-2xl mt-2">Models loading...</div>
 					{:else if inpaintingRunning}
-						<div class="text-primary-500  font-bold text-2xl mt-2">Removing area...</div>
+						<div class="text-primary-500 font-bold text-2xl mt-2">Removing area...</div>
 					{:else if isEmbedderRunning}
-						<div class="text-primary-500  font-bold text-2xl mt-2">
-							Processing new image...
-						</div>
-					{:else if decoderLoading}
-						<div class="text-primary-500  font-bold text-2xl mt-2">Computing mask...</div>
+						<div class="text-primary-500 font-bold text-2xl mt-2">Processing new image...</div>
+					{:else if decoderRunning}
+						<div class="text-primary-500 font-bold text-2xl mt-2">Computing mask...</div>
 					{/if}
 				</div>
 				<div class="absolute w-full h-full overflow-hidden">
 					<div
 						id="brushToolCursor"
 						style="
-		display: {selectedTool === 'segment_anything' || anythingLoading
+		display: {selectedTool === 'segment_anything' || anythingEssentialLoading
 							? 'none'
 							: currentCursor === 'default'
 							? 'none'
@@ -1125,13 +1145,13 @@
 				</div>
 				<!-- default width so the page isnt empty till load -->
 				<canvas
-					class="shadow-lg {anythingLoading ? 'opacity-30 cursor-not-allowed' : ''}"
+					class="shadow-lg {anythingEssentialLoading ? 'opacity-30 cursor-not-allowed' : ''}"
 					id="imageCanvas"
 					bind:this={imageCanvas}
 				/>
 				<canvas
 					id="maskCanvas"
-					class={anythingLoading ? 'opacity-30 cursor-not-allowed' : ''}
+					class={anythingEssentialLoading ? 'opacity-30 cursor-not-allowed' : ''}
 					bind:this={maskCanvas}
 					on:mousedown={selectedTool === 'brush' ? startPainting : undefined}
 					on:mouseup={selectedTool === 'brush' ? stopPainting : undefined}
@@ -1143,7 +1163,7 @@
 					on:contextmenu={selectedTool === 'segment_anything' ? handleCanvasClick : undefined}
 				/>
 				<img
-					class="shadow-lg {anythingLoading ? 'opacity-50 cursor-not-allowed' : ''}"
+					class="shadow-lg {anythingEssentialLoading ? 'opacity-50 cursor-not-allowed' : ''}"
 					src={$uploadedImgBase64}
 					alt="originalImage"
 					bind:this={originalImgElement}
@@ -1155,11 +1175,24 @@
 			<div />
 			<button
 				class="btn lg:btn-xl btn-lg variant-filled-primary text-white dark:text-white font-semibold"
-				disabled={anythingLoading}
+				disabled={anythingEssentialLoading || inpainterLoading}
 				on:click={async () => handleInpainting()}
 			>
-				<span class="flex gap-x-2 items-center"><WandSparkles size={18} /> Remove </span></button
-			>
+				<span class="flex gap-x-2 items-center">
+					{#if inpainterLoading && !anythingEssentialLoading}
+						<ProgressRadial
+							width="w-6"
+							meter="stroke-white"
+							track="stroke-white/30"
+							value={undefined}
+						/>
+						Loading model
+					{:else}
+						<WandSparkles size={18} />
+						Remove
+					{/if}
+				</span>
+			</button>
 		</div>
 	</div>
 </AppShell>

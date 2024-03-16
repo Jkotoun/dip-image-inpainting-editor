@@ -9,15 +9,7 @@ export default defineConfig({
 		targets: [
 			{
 				src: 'node_modules/onnxruntime-web/dist/*.wasm',
-				dest: '.'
-			},
-			{
-				src: 'node_modules/onnxruntime-web/dist/*.wasm',
 				dest: './src/workers'
-			},
-			{
-				src: 'node_modules/onnxruntime-web/dist/*.wasm',
-				dest: './editor'
 			},
 		]
 	}),
