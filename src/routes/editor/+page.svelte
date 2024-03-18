@@ -4,6 +4,7 @@
 	import { uploadedImgBase64, uploadedImgFileName } from '../../stores/imgStore';
 	import { mainWorker } from '../../stores/workerStore';
 	import { MESSAGE_TYPES } from '../../workers/messageTypes';
+	import Panzoom, { type PanzoomObject } from '@panzoom/panzoom';
 	import {
 		Brush,
 		WandSparkles,
@@ -13,9 +14,12 @@
 		Eraser,
 		HardDriveDownload,
 		PlusCircleIcon,
-		MinusCircle
+		MinusCircle,
+		MoveIcon,
+		ScanEyeIcon,
+		PlusIcon,
+		MinusIcon
 	} from 'lucide-svelte';
-	import { Tensor } from 'onnxruntime-web';
 	import {
 		AppBar,
 		AppShell,
@@ -51,6 +55,7 @@
 	$: anythingEssentialLoading =
 		inpaintingRunning || encoderLoading || decoderLoading || isEmbedderRunning || decoderRunning;
 
+	let enablePan: boolean = false;
 	//segmentation model constants
 	const longSideLength = 1024;
 	let resizedImgWidth: number;
@@ -132,10 +137,12 @@
 			currentEditorState.currentImgEmbedding = img_tensor;
 			isEmbedderRunning = false;
 		} else if (type === MESSAGE_TYPES.INPAINTING_RUN_RESULT && !inpainterLoading) {
-			RGB_CHW_array_to_imageData(data, imageCanvas.height, imageCanvas.width).then((resultImgData) => {
-				setInpaintedImgEditorState(resultImgData);
-				inpaintingRunning = false;
-			});
+			RGB_CHW_array_to_imageData(data, imageCanvas.height, imageCanvas.width).then(
+				(resultImgData) => {
+					setInpaintedImgEditorState(resultImgData);
+					inpaintingRunning = false;
+				}
+			);
 		}
 	}
 
@@ -148,7 +155,7 @@
 				isEmbedderRunning = true;
 				runModelEncoder(currentEditorState.imgData);
 				// Continue with your logic here...
-			}else if (type === MESSAGE_TYPES.ENCODER_DECODER_LOADED) {
+			} else if (type === MESSAGE_TYPES.ENCODER_DECODER_LOADED) {
 				$mainWorker!.onmessage = handleWorkerModelsMessages;
 				$mainWorker?.postMessage({ type: MESSAGE_TYPES.LOAD_INPAINTER });
 				encoderLoading = decoderLoading = false;
@@ -156,7 +163,7 @@
 				runModelEncoder(currentEditorState.imgData);
 			}
 		};
-	} 
+	}
 
 	//EMBEDDING FUNCTIONS
 	async function getResizedImgRGBArray(
@@ -423,6 +430,7 @@
 
 	function reset() {
 		//clear all states
+		panzoom.reset();
 		currentEditorState = {
 			maskBrush: new Array(imgDataOriginal.height)
 				.fill(false)
@@ -435,7 +443,9 @@
 				.map(() => new Array(imgDataOriginal.width).fill(false)),
 			clickedPositions: [],
 			imgData: imgDataOriginal,
-			currentImgEmbedding: editorStatesHistory[0].currentImgEmbedding
+			currentImgEmbedding: editorStatesHistory[0]
+				? editorStatesHistory[0].currentImgEmbedding
+				: currentEditorState.currentImgEmbedding
 		};
 		editorStatesHistory = [];
 		editorStatesUndoed = [];
@@ -610,7 +620,7 @@
 		imageDataRGB: Uint8Array,
 		img_height: number,
 		img_width: number
-	):Promise<ImageData> {
+	): Promise<ImageData> {
 		let dataRGBBufferReshaped = reshapeCHWtoHWC(imageDataRGB, img_width, img_height);
 		let imgDataBuffer = new Uint8ClampedArray(img_height * img_width * 4);
 		// fill the imgData buffer, adding alpha channel
@@ -868,8 +878,36 @@
 			(then, the message is sent automatically after loading)*/
 			$mainWorker.postMessage({ type: MESSAGE_TYPES.CHECK_MODELS_LOADING_STATE });
 		}
+		panzoom = Panzoom(canvasesContainer, {
+			disablePan: !enablePan,
+			minScale: 1,
+			maxScale: 10,
+			disableZoom: anythingEssentialLoading
+		}) as PanzoomObject;
+		canvasesContainer.parentElement!.addEventListener('wheel', panzoom.zoomWithWheel);
+		canvasesContainer.addEventListener('panzoomchange', (event: any) => {
+			currentZoom = event.detail.scale;
+		});
+		setTimeout(() => panzoom.zoom(0, 100));
+		// panzoom.zoom(5, { animate: true });
 	});
 	const drawerStore = getDrawerStore();
+
+	let panzoom: any;
+	let currentZoom = 1;
+
+	function handlePanzoomSettingsChange(enablePan: boolean, anythingEssentialLoading: boolean){
+		if (panzoom) {
+			panzoom.setOptions({
+				disablePan: !enablePan,
+				disableZoom: anythingEssentialLoading
+			});
+		}
+	}
+
+	$: handlePanzoomSettingsChange(enablePan, anythingEssentialLoading);
+	//  const elem = document.getElementById('test');
+	// 	if (!elem) return;
 </script>
 
 <Drawer>
@@ -1085,47 +1123,62 @@
 		</div>
 		<!-- editor canvases-->
 		<div
-			class="canvases"
-			bind:this={canvasesContainer}
-			style="cursor: {anythingEssentialLoading
+			id="mainEditorContainer"
+			style="cursor: {anythingEssentialLoading ? 'not-allowed' : 'default'}"
+		>
+			<div
+				class="absolute w-full h-full flex items-center flex-col gap-y-2 justify-center z-50 {!anythingEssentialLoading
+					? 'hidden'
+					: ''}"
+			>
+				<ProgressRadial meter="stroke-primary-500" track="stroke-primary-500/30" />
+				{#if encoderLoading || decoderLoading}
+					<div class="text-primary-500 font-bold text-2xl mt-2">Models loading...</div>
+				{:else if inpaintingRunning}
+					<div class="text-primary-500 font-bold text-2xl mt-2">Removing area...</div>
+				{:else if isEmbedderRunning}
+					<div class="text-primary-500 font-bold text-2xl mt-2">Processing new image...</div>
+				{:else if decoderRunning}
+					<div class="text-primary-500 font-bold text-2xl mt-2">Computing mask...</div>
+				{/if}
+			</div>
+			<div
+				class="canvases"
+				bind:this={canvasesContainer}
+				style="cursor: {enablePan
+					? 'move'
+					: selectedTool === 'segment_anything'
+					? 'default'
+					: currentCursor === 'default'
+					? 'auto'
+					: 'none'}
+				"
+			>
+				<!-- style="cursor: {anythingEssentialLoading
 				? 'not-allowed'
+				: (enablePan
+				? 'move'
 				: selectedTool === 'segment_anything'
 				? 'default'
 				: currentCursor === 'default'
 				? 'auto'
-				: 'none'}"
-		>
-			<div
-				class="relative w-full"
-				on:mouseenter={showBrushCursor}
-				on:mouseleave={hideBrushCursor}
-				role="group"
-			>
+				: 'none')}" -->
+
 				<div
-					class="absolute w-full h-full flex items-center flex-col gap-y-2 justify-center z-50 {!anythingEssentialLoading
-						? 'hidden'
-						: ''}"
+					class="relative w-full"
+					on:mouseenter={!enablePan ? showBrushCursor : undefined}
+					on:mouseleave={!enablePan ? hideBrushCursor : undefined}
+					role="group"
 				>
-					<ProgressRadial meter="stroke-primary-500" track="stroke-primary-500/30" />
-					{#if encoderLoading || decoderLoading}
-						<div class="text-primary-500 font-bold text-2xl mt-2">Models loading...</div>
-					{:else if inpaintingRunning}
-						<div class="text-primary-500 font-bold text-2xl mt-2">Removing area...</div>
-					{:else if isEmbedderRunning}
-						<div class="text-primary-500 font-bold text-2xl mt-2">Processing new image...</div>
-					{:else if decoderRunning}
-						<div class="text-primary-500 font-bold text-2xl mt-2">Computing mask...</div>
-					{/if}
-				</div>
-				<div class="absolute w-full h-full overflow-hidden">
-					<div
-						id="brushToolCursor"
-						style="
+					<div class="absolute w-full h-full overflow-hidden">
+						<div
+							id="brushToolCursor"
+							style="
 		display: {selectedTool === 'segment_anything' || anythingEssentialLoading
-							? 'none'
-							: currentCursor === 'default'
-							? 'none'
-							: 'block'};
+								? 'none'
+								: currentCursor === 'default'
+								? 'none'
+								: 'block'};
 		width: {brushSize - 2}px;
 		height: {brushSize - 2}px;
 		left: {currentCanvasRelativeX}px;
@@ -1135,58 +1188,127 @@
 		opacity: {isPainting ? 0.6 : 0.5};
 
 	"
+						/>
+					</div>
+					<!-- default width so the page isnt empty till load -->
+					<canvas
+						class="shadow-lg {anythingEssentialLoading ? 'opacity-30 cursor-not-allowed' : ''}"
+						id="imageCanvas"
+						bind:this={imageCanvas}
+					/>
+					<canvas
+						id="maskCanvas"
+						class="{enablePan ? '' : 'panzoom-exclude'} {anythingEssentialLoading
+							? 'opacity-30 cursor-not-allowed'
+							: ''}"
+						bind:this={maskCanvas}
+						on:mousedown={selectedTool === 'brush' && !enablePan ? startPainting : undefined}
+						on:mouseup={selectedTool === 'brush' && !enablePan ? stopPainting : undefined}
+						on:mousemove={(event) =>
+							selectedTool === 'brush' && !enablePan
+								? handleEditorMouseMove(event, maskCanvas)
+								: undefined}
+						on:click={selectedTool === 'segment_anything' && !enablePan
+							? async (e) => handleCanvasClick(e)
+							: undefined}
+					/>
+					<img
+						class="shadow-lg {anythingEssentialLoading ? 'opacity-50 cursor-not-allowed' : ''}"
+						src={$uploadedImgBase64}
+						alt="originalImage"
+						bind:this={originalImgElement}
 					/>
 				</div>
-				<!-- default width so the page isnt empty till load -->
-				<canvas
-					class="shadow-lg {anythingEssentialLoading ? 'opacity-30 cursor-not-allowed' : ''}"
-					id="imageCanvas"
-					bind:this={imageCanvas}
-				/>
-				<canvas
-					id="maskCanvas"
-					class={anythingEssentialLoading ? 'opacity-30 cursor-not-allowed' : ''}
-					bind:this={maskCanvas}
-					on:mousedown={selectedTool === 'brush' ? startPainting : undefined}
-					on:mouseup={selectedTool === 'brush' ? stopPainting : undefined}
-					on:mousemove={(event) =>
-						selectedTool === 'brush' ? handleEditorMouseMove(event, maskCanvas) : undefined}
-					on:click={selectedTool === 'segment_anything'
-						? async (e) => handleCanvasClick(e)
-						: undefined}
-					on:contextmenu={selectedTool === 'segment_anything' ? handleCanvasClick : undefined}
-				/>
-				<img
-					class="shadow-lg {anythingEssentialLoading ? 'opacity-50 cursor-not-allowed' : ''}"
-					src={$uploadedImgBase64}
-					alt="originalImage"
-					bind:this={originalImgElement}
-				/>
 			</div>
 		</div>
 		<!-- bottom buttons -->
-		<div class="flex justify-end pt-4">
-			<div />
-			<button
-				class="btn lg:btn-xl btn-lg variant-filled-primary text-white dark:text-white font-semibold"
-				disabled={anythingEssentialLoading || inpainterLoading}
-				on:click={async () => handleInpainting()}
+		<div class="flex gap-x-2 py-4">
+			<div class="sm:flex-1 flex-0" />
+			<div
+				class="btn-group variant-filled {anythingEssentialLoading
+					? 'opacity-50 cursor-not-allowed'
+					: ''}"
 			>
-				<span class="flex gap-x-2 items-center">
-					{#if inpainterLoading && !anythingEssentialLoading}
-						<ProgressRadial
-							width="w-6"
-							meter="stroke-white"
-							track="stroke-white/30"
-							value={undefined}
-						/>
-						Loading model
-					{:else}
-						<WandSparkles size={18} />
-						Remove
-					{/if}
-				</span>
-			</button>
+				<div
+					class="flex items-center justify-center {anythingEssentialLoading
+						? 'cursor-not-allowed'
+						: ''}"
+				>
+					<input
+						type="checkbox"
+						id="choose-me"
+						class="peer hidden"
+						disabled={anythingEssentialLoading}
+						bind:checked={enablePan}
+					/>
+		
+					<label
+						for="choose-me"
+						class="select-none {anythingEssentialLoading
+							? 'cursor-not-allowed opacity-50'
+							: 'cursor-pointer'} rounded-lg
+					  peer-checked:bg-surface-700 dark:peer-checked:bg-surface-200 peer-checked:border-gray-200 !px-1 !mx-1 !ml-2 lg:!p-2 lg:!mr-2 lg:!ml-3"
+					>
+						<MoveIcon />
+					</label>
+				</div>
+				<button
+					on:click={(e) => e.preventDefault()}
+
+					disabled={anythingEssentialLoading}
+					class="cursor-default !px-1 lg:!px-3"
+				>
+					<div class="flex items-center justify-center gap-x-2">
+						<button
+							on:click={(e) => panzoom.zoomOut()}
+							class="{anythingEssentialLoading ? 'cursor-not-allowed' : 'cursor-pointer'} btn btn-sm !p-0 lg:!px-4 lg:!py-2"
+						>
+							<MinusIcon
+							/>
+						</button>
+	
+						<span
+							class="border-2 lg:text-md text-sm font-medium rounded-md p-2 border-surface-600 dark:border-surface-700"
+							>{Math.round(currentZoom*100)} %</span
+						>
+						<button
+							on:click={(e) => panzoom.zoomIn()}
+							class="{anythingEssentialLoading ? 'cursor-not-allowed' : 'cursor-pointer'} btn btn-sm variant-filled !p-0 lg:!px-4 lg:!py-2"
+						>
+							<PlusIcon  />
+						</button>
+					</div>
+				</button>
+				<button disabled={anythingEssentialLoading} on:click={() => panzoom.reset()} class="!px-2 !pr-3 lg:!px-4 lg:!pr-5">
+					<ScanEyeIcon />
+				</button>
+			</div>
+			<div class="flex-1 flex justify-end">
+				<button
+					class="btn lg:btn-xl btn-lg variant-filled-primary text-white dark:text-white font-semibold"
+					disabled={anythingEssentialLoading || inpainterLoading}
+					on:click={async () => handleInpainting()}
+				>
+					<span class="flex gap-x-2 items-center">
+						{#if inpainterLoading && !anythingEssentialLoading}
+							<ProgressRadial
+								width="w-6"
+								meter="stroke-white"
+								track="stroke-white/30"
+								value={undefined}
+							/>
+							Loading model
+						{:else}
+							<WandSparkles size={18} />
+							Remove
+						{/if}
+					</span>
+				</button>
+				<!-- <div class="w-20 h-20 ml-auto">
+
+
+			  </div> -->
+			</div>
 		</div>
 	</div>
 </AppShell>
@@ -1206,7 +1328,7 @@
 	.canvases #maskCanvas {
 		opacity: 0.5;
 	}
-	.canvases {
+	#mainEditorContainer {
 		position: relative;
 		display: flex;
 		justify-content: center;
@@ -1224,5 +1346,7 @@
 	}
 	.no-margin {
 		margin: 0 !important;
+	}
+	.btn-padding{
 	}
 </style>
