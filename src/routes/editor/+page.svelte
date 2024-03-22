@@ -1156,7 +1156,7 @@
 				{/if}
 			</div>
 			<div
-				class="canvases"
+				class="canvases w-full"
 				bind:this={canvasesContainer}
 				style="cursor: {enablePan
 					? 'move'
