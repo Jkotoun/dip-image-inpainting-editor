@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
-	import * as tf from '@tensorflow/tfjs';
+	// import * as tf from '@tensorflow/tfjs';
 	import { uploadedImgBase64, uploadedImgFileName } from '../../stores/imgStore';
 	import { mainWorker } from '../../stores/workerStore';
 	import { MESSAGE_TYPES } from '../../workers/messageTypes';
@@ -83,7 +83,10 @@
 		maskSAMDilated: boolean[][];
 		clickedPositions: SAMmarker[];
 		imgData: ImageData;
-		currentImgEmbedding: tf.Tensor<tf.Rank> | undefined;
+		currentImgEmbedding: {
+			data: any,
+			dims: any
+		} | undefined;
 	}
 	let imgDataOriginal: ImageData;
 	let imgName: string = 'default';
@@ -133,8 +136,11 @@
 			}
 			decoderRunning = false;
 		} else if (type === MESSAGE_TYPES.ENCODER_RUN_RESULT && !encoderLoading) {
-			let img_tensor = tf.tensor(data.embeddings as any, data.dims as any, 'float32');
-			currentEditorState.currentImgEmbedding = img_tensor;
+			// let img_tensor = tf.tensor(data.embeddings as any, data.dims as any, 'float32');
+			currentEditorState.currentImgEmbedding = {
+				data: data.embeddings,
+				dims: data.dims
+			};
 			isEmbedderRunning = false;
 		} else if (type === MESSAGE_TYPES.INPAINTING_RUN_RESULT && !inpainterLoading) {
 			RGB_CHW_array_to_imageData(data, imageCanvas.height, imageCanvas.width).then(
@@ -280,8 +286,35 @@
 	}
 
 	//DECODER MODEL FUNCTIONS
+	// let modelInputDict = {
+	// 		image_embeddings: {
+	// 			data: currentEditorState.currentImgEmbedding!.data,
+	// 			dims: currentEditorState.currentImgEmbedding!.dims
+	// 		},
 
+	// 		point_coords: {
+	// 			data: onnxInputPoints,
+	// 			dims: [1, onnxInputPoints.length, 2]
+	// 		},
+	// 		point_labels:{
+	// 			data: inputLabels,
+	// 			dims: [1, inputLabels.length]
+	// 		},
+	// 		mask_input: {
+	// 			data: new Float32Array(256 * 256).fill(0),
+	// 			dims: [1, 1, 256, 256]
+	// 		},
+	// 		has_mask_input: {
+	// 			data: [0],
+	// 			dims: [1]
+	// 		},
+	// 		orig_im_size:{
+	// 			data: [imageCanvas.height, imageCanvas.width],
+	// 			dims: [2]
+	// 		} 
+	// 	};
 	async function createInputDict(currentEditorState: editorState) {
+		
 		let inputPoint: Array<{ x: number; y: number }> = currentEditorState.clickedPositions.map(
 			({ x, y }) => coordsToResizedImgScale(x, y)
 		);
@@ -295,29 +328,31 @@
 		onnxInputPoints.push([0, 0]);
 		inputLabels.push(-1);
 
-		// Create input tensors
-		const pointCoordsTensor = tf.tensor(
-			[onnxInputPoints],
-			[1, onnxInputPoints.length, 2],
-			'float32'
-		);
-		const pointLabelsTensor = tf.tensor([inputLabels], [1, inputLabels.length], 'float32');
-		//canvas is set to actual width and height on upload
-		const origImgSizeTensor = tf.tensor([imageCanvas.height, imageCanvas.width], [2], 'float32');
-		const maskInputTensor = tf.tensor(
-			new Float32Array(256 * 256).fill(0),
-			[1, 1, 256, 256],
-			'float32'
-		);
-		const hasMaskInputTensor = tf.tensor([0], [1], 'float32');
-
 		let modelInput = {
-			image_embeddings: currentEditorState.currentImgEmbedding as tf.Tensor<tf.Rank>,
-			point_coords: pointCoordsTensor,
-			point_labels: pointLabelsTensor,
-			mask_input: maskInputTensor,
-			has_mask_input: hasMaskInputTensor,
-			orig_im_size: origImgSizeTensor
+			image_embeddings: {
+				data: currentEditorState.currentImgEmbedding!.data,
+				dims: currentEditorState.currentImgEmbedding!.dims
+			},
+			point_coords: {
+				data: onnxInputPoints.flat(),
+				dims: [1, onnxInputPoints.length, 2]
+			},
+			point_labels: {
+				data: inputLabels,
+				dims: [1, inputLabels.length]
+			},
+			mask_input: {
+				data: new Float32Array(256 * 256).fill(0),
+				dims: [1, 1, 256, 256]
+			},
+			has_mask_input:	{
+				data: [0],
+				dims: [1]
+			},
+			orig_im_size: {
+				data: [imageCanvas.height, imageCanvas.width],
+				dims: [2]
+			} 
 		};
 		return modelInput;
 	}
@@ -332,29 +367,7 @@
 		const modelInput = await createInputDict(currentEditorState);
 		$mainWorker?.postMessage({
 			type: MESSAGE_TYPES.DECODER_RUN,
-			data: {
-				image_embeddings: {
-					data: modelInput.image_embeddings.dataSync(),
-					dims: modelInput.image_embeddings.shape
-				},
-				point_coords: {
-					data: modelInput.point_coords.dataSync(),
-					dims: modelInput.point_coords.shape
-				},
-				point_labels: {
-					data: modelInput.point_labels.dataSync(),
-					dims: modelInput.point_labels.shape
-				},
-				mask_input: { data: modelInput.mask_input.dataSync(), dims: modelInput.mask_input.shape },
-				has_mask_input: {
-					data: modelInput.has_mask_input.dataSync(),
-					dims: modelInput.has_mask_input.shape
-				},
-				orig_im_size: {
-					data: modelInput.orig_im_size.dataSync(),
-					dims: modelInput.orig_im_size.shape
-				}
-			}
+			data: modelInput
 		});
 	}
 

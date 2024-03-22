@@ -1,10 +1,11 @@
 import * as ort from 'onnxruntime-web';
-import * as tf from '@tensorflow/tfjs';
+// import * as tf from '@tensorflow/tfjs';
 import { MESSAGE_TYPES } from './messageTypes';
 
 const mobileSAMEncoderPath = '/mobile_sam.encoder.onnx';
 const mobileSAMDecoderPath = '/tfjs_tiny_decoder_quantized/model.json';
 const mobile_inpainting_GAN = '/migan_pipeline_v2.onnx';
+const modelSAMDecoderONNXPath = '/sam_onnx_decoder_mobile_quantized.onnx';
 let decoderReady = false;
 let encoderReady = false;
 let inpainterReady = false;
@@ -14,6 +15,8 @@ let encoderOnnxSession;
 let miganOnnxSession;
 // @ts-ignore
 let tfjsDecoder;
+// @ts-ignore
+let decoderOnnxSession;
 
 
 async function loadEncoderDecoder(){
@@ -24,20 +27,24 @@ async function loadEncoderDecoder(){
         executionProviders: ['wasm'],
         graphOptimizationLevel: 'all'
     });
+    decoderOnnxSession = await ort.InferenceSession.create(modelSAMDecoderONNXPath, {
+        executionProviders: ['wasm'],
+        graphOptimizationLevel: 'all'
+    });
     encoderReady = true;
-    await tf.ready();
-    try {
-        await import('@tensorflow/tfjs-backend-webgpu');
-        await tf.setBackend('webgpu');
-    } catch (e) {
-        try {
-            await tf.setBackend('webgl');
-        } catch (e) {
-            console.error('could not load backend:', e);
-            throw e;
-        }
-    }
-    tfjsDecoder = await tf.loadGraphModel(mobileSAMDecoderPath);
+    // await tf.ready();
+    // try {
+    //     await import('@tensorflow/tfjs-backend-webgpu');
+    //     await tf.setBackend('webgpu');
+    // } catch (e) {
+    //     try {
+    //         await tf.setBackend('webgl');
+    //     } catch (e) {
+    //         console.error('could not load backend:', e);
+    //         throw e;
+    //     }
+    // }
+    // tfjsDecoder = await tf.loadGraphModel(mobileSAMDecoderPath);
     decoderReady = true;
     self.postMessage({ type: MESSAGE_TYPES.ENCODER_DECODER_LOADED, data: "Encoder and decoder loaded" });
 }
@@ -81,8 +88,8 @@ self.onmessage = async function (event) {
         loadInpainter();
     }
     else if (type === MESSAGE_TYPES.DECODER_RUN && decoderReady) {
-        const decoderResult = await runDecoder(data);
-        self.postMessage({ type: MESSAGE_TYPES.DECODER_RUN_RESULT, data: decoderResult });
+        const resultTest = await runDecoderONNX(data);
+        self.postMessage({ type: MESSAGE_TYPES.DECODER_RUN_RESULT, data: resultTest });
     }
     else if (type === MESSAGE_TYPES.ENCODER_RUN && encoderReady) {
         const encoderResult = await runEncoder(data);
@@ -117,23 +124,58 @@ async function runEncoder(data) {
     return output
 }
 
-// @ts-ignore
-async function runDecoder(data) {
+// // @ts-ignore
+// async function runDecoder(data) {
 
+//     let inputDict = {
+//         "has_mask_input": tf.tensor(data.has_mask_input.data, data.has_mask_input.dims, 'float32'),
+//         "image_embeddings": tf.tensor(data.image_embeddings.data, data.image_embeddings.dims, 'float32'),
+//         "mask_input": tf.tensor(data.mask_input.data, data.mask_input.dims, 'float32'),
+//         "orig_im_size": tf.tensor(data.orig_im_size.data, data.orig_im_size.dims, 'float32'),
+//         "point_coords": tf.tensor(data.point_coords.data, data.point_coords.dims, 'float32'),
+//         "point_labels": tf.tensor(data.point_labels.data, data.point_labels.dims, 'float32'),
+//     }
+//     // @ts-ignore
+//     const predictions = await tfjsDecoder.executeAsync(inputDict);
+
+//     // @ts-ignore
+//     const lastData = await predictions[predictions.length - 1].arraySync();
+//     return lastData[0][0];
+// }
+
+// @ts-ignore
+async function runDecoderONNX(data){
     let inputDict = {
-        "has_mask_input": tf.tensor(data.has_mask_input.data, data.has_mask_input.dims, 'float32'),
-        "image_embeddings": tf.tensor(data.image_embeddings.data, data.image_embeddings.dims, 'float32'),
-        "mask_input": tf.tensor(data.mask_input.data, data.mask_input.dims, 'float32'),
-        "orig_im_size": tf.tensor(data.orig_im_size.data, data.orig_im_size.dims, 'float32'),
-        "point_coords": tf.tensor(data.point_coords.data, data.point_coords.dims, 'float32'),
-        "point_labels": tf.tensor(data.point_labels.data, data.point_labels.dims, 'float32'),
+        has_mask_input: new ort.Tensor('float32', data.has_mask_input.data, data.has_mask_input.dims),
+        image_embeddings: new ort.Tensor('float32', data.image_embeddings.data, data.image_embeddings.dims),
+        mask_input: new ort.Tensor('float32', data.mask_input.data, data.mask_input.dims),
+        orig_im_size: new ort.Tensor('float32', data.orig_im_size.data, data.orig_im_size.dims),
+        point_coords: new ort.Tensor('float32', data.point_coords.data, data.point_coords.dims),
+        point_labels: new ort.Tensor('float32', data.point_labels.data, data.point_labels.dims)
     }
     // @ts-ignore
-    const predictions = await tfjsDecoder.executeAsync(inputDict);
+    const output = await decoderOnnxSession?.run(inputDict);
+    let mask = output['masks'].data
+    let dims = output['masks'].dims
+    const reshapedArray = reshapeFloat32ArrayTo2D(mask, dims[2], dims[3]);
+    return reshapedArray
+}
+//@ts-ignore
+function reshapeFloat32ArrayTo2D(array, numRows, numCols) {
+    if (numRows * numCols !== array.length) {
+        throw new Error('Number of elements in the array does not match the specified dimensions.');
+    }
 
-    // @ts-ignore
-    const lastData = await predictions[predictions.length - 1].arraySync();
-    return lastData[0][0];
+    const result = [];
+    for (let i = 0; i < numRows; i++) {
+        const row = [];
+        for (let j = 0; j < numCols; j++) {
+            row.push(array[i * numCols + j]);
+        }
+        result.push(row);
+    }
+
+    return result;
 }
 
 
