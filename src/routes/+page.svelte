@@ -59,7 +59,7 @@
 
 	onMount(() => {
 		if(!$mainWorker){
-			w = new Worker('/src/workers/mainworker.worker.js' , { type: "module" });
+			w = new Worker(new URL('./../workers/mainworker.worker.js', import.meta.url) , { type: "module" });
 			mainWorker.set(w);
 		}
 	});

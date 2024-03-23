@@ -7,7 +7,15 @@ ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
 import { MESSAGE_TYPES } from './messageTypes';
 
 const mobileSAMEncoderPath = '/mobile_sam.encoder.onnx';
+//good results, but doesnt work with webgpu (wrong results), much slower on wasm (approx 3x)
+// const mobileSAMEncoderPath = '/mobile_sam.encoder_fp16.onnx';
+
 const mobile_inpainting_GAN = '/migan_pipeline_v2.onnx';
+//doesnt work with webgpu (throws error), much slower on wasm (approx 3x), also slightly worse results
+// const mobile_inpainting_GAN = '/migan_pipeline_v2_fp16.onnx';
+
+
+
 const modelSAMDecoderONNXPath = '/sam_onnx_decoder_mobile_quantized.onnx';
 let decoderReady = false;
 let encoderReady = false;
@@ -18,17 +26,15 @@ let encoderOnnxSession;
 let miganOnnxSession;
 // @ts-ignore
 let decoderOnnxSession;
-console.log(ort.env)
 
 async function loadEncoderDecoder() {
     if (encoderReady && decoderReady) {
         return;
     }
     try {
-
         encoderOnnxSession = await ort.InferenceSession.create(mobileSAMEncoderPath, {
             executionProviders: ['webgpu'],
-            graphOptimizationLevel: 'all'
+            graphOptimizationLevel: 'all',
         });
         console.log("init SAM encoder with webgpu succeeded")
     }

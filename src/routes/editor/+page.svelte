@@ -127,6 +127,7 @@
 			decoderRunning = false;
 		} else if (type === MESSAGE_TYPES.ENCODER_RUN_RESULT && !encoderLoading) {
 			// let img_tensor = tf.tensor(data.embeddings as any, data.dims as any, 'float32');
+			console.log(data.embeddings)
 			currentEditorState.currentImgEmbedding = {
 				data: data.embeddings,
 				dims: data.dims
