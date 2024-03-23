@@ -7,7 +7,6 @@ ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
 import { MESSAGE_TYPES } from './messageTypes';
 
 const mobileSAMEncoderPath = '/mobile_sam.encoder.onnx';
-const mobileSAMDecoderPath = '/tfjs_tiny_decoder_quantized/model.json';
 const mobile_inpainting_GAN = '/migan_pipeline_v2.onnx';
 const modelSAMDecoderONNXPath = '/sam_onnx_decoder_mobile_quantized.onnx';
 let decoderReady = false;
@@ -18,10 +17,8 @@ let encoderOnnxSession;
 // @ts-ignore
 let miganOnnxSession;
 // @ts-ignore
-let tfjsDecoder;
-// @ts-ignore
 let decoderOnnxSession;
-
+console.log(ort.env)
 
 async function loadEncoderDecoder() {
     if (encoderReady && decoderReady) {
@@ -31,40 +28,41 @@ async function loadEncoderDecoder() {
 
         encoderOnnxSession = await ort.InferenceSession.create(mobileSAMEncoderPath, {
             executionProviders: ['webgpu'],
+            graphOptimizationLevel: 'all'
         });
         console.log("init SAM encoder with webgpu succeeded")
     }
     catch (e) {
-        console.log("couldnt init SAM encoder with webgpu, running on wasm")
+        console.log("couldnt init SAM encoder with webgpu, trying wasm")
         encoderOnnxSession = await ort.InferenceSession.create(mobileSAMEncoderPath, {
             executionProviders: ['wasm'],
+            graphOptimizationLevel: 'all'
         });
     }
     decoderOnnxSession = await ort.InferenceSession.create(modelSAMDecoderONNXPath, {
         executionProviders: ['wasm'],
+        graphOptimizationLevel: 'all'
     });
     encoderReady = true;
-    // await tf.ready();
-    // try {
-    //     await import('@tensorflow/tfjs-backend-webgpu');
-    //     await tf.setBackend('webgpu');
-    // } catch (e) {
-    //     try {
-    //         await tf.setBackend('webgl');
-    //     } catch (e) {
-    //         console.error('could not load backend:', e);
-    //         throw e;
-    //     }
-    // }
-    // tfjsDecoder = await tf.loadGraphModel(mobileSAMDecoderPath);
     decoderReady = true;
     self.postMessage({ type: MESSAGE_TYPES.ENCODER_DECODER_LOADED, data: "Encoder and decoder loaded" });
 }
 async function loadInpainter() {
     if (!inpainterReady) {
-        miganOnnxSession = await ort.InferenceSession.create(mobile_inpainting_GAN, {
-            executionProviders: ['wasm'],
-        });
+        try{
+            miganOnnxSession = await ort.InferenceSession.create(mobile_inpainting_GAN, {
+                executionProviders: ['webgpu'],
+                graphOptimizationLevel: 'disabled',
+            });
+            console.log("webgpu migan init succeeded")
+        }
+        catch(e){
+            console.log("webgpu migan init failed, trying wasm")
+            miganOnnxSession = await ort.InferenceSession.create(mobile_inpainting_GAN, {
+                executionProviders: ['wasm'],
+                graphOptimizationLevel: 'all'
+            });
+        }
         inpainterReady = true;
         self.postMessage({ type: MESSAGE_TYPES.INPAINTER_LOADED, data: "Inpainter loaded" });
     }

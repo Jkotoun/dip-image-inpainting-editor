@@ -1,4 +1,3 @@
-
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import { uploadedImgBase64, uploadedImgFileName } from '../../stores/imgStore';
@@ -83,10 +82,12 @@
 		maskSAMDilated: boolean[][];
 		clickedPositions: SAMmarker[];
 		imgData: ImageData;
-		currentImgEmbedding: {
-			data: any,
-			dims: any
-		} | undefined;
+		currentImgEmbedding:
+			| {
+					data: any;
+					dims: any;
+			  }
+			| undefined;
 	}
 	let imgDataOriginal: ImageData;
 	let imgName: string = 'default';
@@ -106,17 +107,6 @@
 	let selectedBrushMode: 'brush' | 'eraser' = 'brush'; // Initial selected option
 	let selectedTool: 'brush' | 'segment_anything' = 'segment_anything';
 	let selectedSAMMode: 'positive' | 'negative' = 'positive';
-
-	async function changeDilatation(pixelsDilatation: number) {
-		if (currentEditorState) {
-			currentEditorState.maskSAMDilated = await dilateMaskByPixels(
-				pixelsDilatation,
-				currentEditorState.maskSAM
-			);
-			renderEditorState(currentEditorState, imageCanvas, maskCanvas);
-		}
-	}
-
 	$: changeDilatation(pixelsDilatation);
 
 	function handleWorkerModelsMessages(event: MessageEvent<any>) {
@@ -149,27 +139,104 @@
 					inpaintingRunning = false;
 				}
 			);
-		}
-	}
-
-	if ($mainWorker) {
-		$mainWorker.onmessage = async (event) => {
-			const { type } = event.data;
-			if (type === MESSAGE_TYPES.ALL_MODELS_LOADED) {
-				decoderLoading = encoderLoading = inpainterLoading = false;
-				$mainWorker!.onmessage = handleWorkerModelsMessages;
-				isEmbedderRunning = true;
-				runModelEncoder(currentEditorState.imgData);
-				// Continue with your logic here...
-			} else if (type === MESSAGE_TYPES.ENCODER_DECODER_LOADED) {
-				$mainWorker!.onmessage = handleWorkerModelsMessages;
-				$mainWorker?.postMessage({ type: MESSAGE_TYPES.LOAD_INPAINTER });
-				encoderLoading = decoderLoading = false;
+		} else if (type === MESSAGE_TYPES.ALL_MODELS_LOADED) {
+			console.log('all loaded already');
+			decoderLoading = encoderLoading = inpainterLoading = false;
+			//run only if editor state is already set and embedding hasnt been run already
+			if (
+				currentEditorState &&
+				currentEditorState.imgData &&
+				!isEmbedderRunning &&
+				!currentEditorState.currentImgEmbedding
+			) {
+				console.log('running');
 				isEmbedderRunning = true;
 				runModelEncoder(currentEditorState.imgData);
 			}
-		};
+			// Continue with your logic here...
+		} else if (type === MESSAGE_TYPES.ENCODER_DECODER_LOADED) {
+			encoderLoading = decoderLoading = false;
+			//run only if editor state is already set and embedding hasnt been run already
+			console.log('response - encoder decoder loaded');
+			console.log('editor state');
+			console.log(currentEditorState);
+			console.log(currentEditorState.imgData);
+			console.log(!isEmbedderRunning);
+			console.log(!currentEditorState.currentImgEmbedding);
+			if (
+				currentEditorState &&
+				currentEditorState.imgData &&
+				!isEmbedderRunning &&
+				!currentEditorState.currentImgEmbedding
+			) {
+				console.log('running embedding');
+				isEmbedderRunning = true;
+				runModelEncoder(currentEditorState.imgData).then((_) => {
+					$mainWorker?.postMessage({ type: MESSAGE_TYPES.LOAD_INPAINTER });
+				});
+			}
+		} else if (type === MESSAGE_TYPES.NONE_LOADED) {
+			console.log('models not loaded yet, waiting');
+		}
 	}
+	if ($mainWorker) {
+		$mainWorker.onmessage = handleWorkerModelsMessages;
+	}
+	async function changeDilatation(pixelsDilatation: number) {
+		if (currentEditorState) {
+			currentEditorState.maskSAMDilated = await dilateMaskByPixels(
+				pixelsDilatation,
+				currentEditorState.maskSAM
+			);
+			renderEditorState(currentEditorState, imageCanvas, maskCanvas);
+		}
+	}
+
+	// if ($mainWorker) {
+	// 	$mainWorker.onmessage = async (event) => {
+	// 		const { type } = event.data;
+	// 		if (type === MESSAGE_TYPES.ALL_MODELS_LOADED) {
+	// 			console.log('all loaded already');
+	// 			decoderLoading = encoderLoading = inpainterLoading = false;
+	// 			$mainWorker!.onmessage = handleWorkerModelsMessages;
+	// 			//run only if editor state is already set and embedding hasnt been run already
+	// 			if (
+	// 				currentEditorState &&
+	// 				currentEditorState.imgData &&
+	// 				!isEmbedderRunning &&
+	// 				!currentEditorState.currentImgEmbedding
+	// 			) {
+	// 				console.log('running');
+	// 				isEmbedderRunning = true;
+	// 				runModelEncoder(currentEditorState.imgData);
+	// 			}
+	// 			// Continue with your logic here...
+	// 		} else if (type === MESSAGE_TYPES.ENCODER_DECODER_LOADED) {
+	// 			$mainWorker!.onmessage = handleWorkerModelsMessages;
+	// 			$mainWorker?.postMessage({ type: MESSAGE_TYPES.LOAD_INPAINTER });
+	// 			encoderLoading = decoderLoading = false;
+	// 			//run only if editor state is already set and embedding hasnt been run already
+	// 			console.log('response - encoder decoder loaded');
+	// 			console.log('editor state');
+	// 			console.log(currentEditorState);
+	// 			console.log(currentEditorState.imgData);
+	// 			console.log(!isEmbedderRunning);
+	// 			console.log(!currentEditorState.currentImgEmbedding);
+	// 			if (
+	// 				currentEditorState &&
+	// 				currentEditorState.imgData &&
+	// 				!isEmbedderRunning &&
+	// 				!currentEditorState.currentImgEmbedding
+	// 			) {
+	// 				console.log('running embedding');
+	// 				isEmbedderRunning = true;
+	// 				runModelEncoder(currentEditorState.imgData);
+	// 			}
+	// 		} else if (type === MESSAGE_TYPES.NONE_LOADED) {
+	// 			console.log('models not loaded yet, waiting');
+	// 		}
+	// 	};
+	// }
 
 	//EMBEDDING FUNCTIONS
 	async function getResizedImgRGBArray(
@@ -213,64 +280,88 @@
 	}
 
 	const setupEditor = async (sourceImgBase64Data: string, sourceImgName: string) => {
-		const img = new Image();
-		img.src = sourceImgBase64Data;
-		imgName = sourceImgName;
-		img.onload = async () => {
-			//setup canvases
+		return new Promise<void>((resolve, reject) => {
+			const img = new Image();
+			img.src = sourceImgBase64Data;
+			imgName = sourceImgName;
+			img.onload = async () => {
+				//setup canvases
 
-			// Calculate aspect ratio
-			imageCanvas.width = img.width;
-			maskCanvas.width = img.width;
-			imageCanvas.height = img.height;
-			maskCanvas.height = img.height;
+				// Calculate aspect ratio
+				imageCanvas.width = img.width;
+				maskCanvas.width = img.width;
+				imageCanvas.height = img.height;
+				maskCanvas.height = img.height;
 
-			if (imageCanvas.width > imageCanvas.height) {
-				imageCanvas.style.width = maskCanvas.style.width = originalImgElement.style.width = '100%';
-				imageCanvas.style.height =
-					maskCanvas.style.height =
-					originalImgElement.style.height =
-						'auto';
-				imageCanvas.style.maxHeight =
-					maskCanvas.style.maxHeight =
-					originalImgElement.style.maxHeight =
-						'75vh';
-			} else {
-				imageCanvas.style.width = maskCanvas.style.width = originalImgElement.style.width = 'auto';
-				imageCanvas.style.height =
-					maskCanvas.style.height =
-					originalImgElement.style.height =
-						'75vh';
-			}
-			const canvasElementSize = imageCanvas.getBoundingClientRect();
-			// canvasesContainer.style.height = `${canvasElementSize.height}px`;
-			ImgResToCanvasSizeRatio = img.width / canvasElementSize.width;
-			//render image
-			const ctx = imageCanvas.getContext('2d');
-			clearCanvas(imageCanvas);
-			ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, imageCanvas.width, imageCanvas.height);
+				if (imageCanvas.width > imageCanvas.height) {
+					imageCanvas.style.width =
+						maskCanvas.style.width =
+						originalImgElement.style.width =
+							'100%';
+					imageCanvas.style.height =
+						maskCanvas.style.height =
+						originalImgElement.style.height =
+							'auto';
+					imageCanvas.style.maxHeight =
+						maskCanvas.style.maxHeight =
+						originalImgElement.style.maxHeight =
+							'75vh';
+				} else {
+					imageCanvas.style.width =
+						maskCanvas.style.width =
+						originalImgElement.style.width =
+							'auto';
+					imageCanvas.style.height =
+						maskCanvas.style.height =
+						originalImgElement.style.height =
+							'75vh';
+				}
+				const canvasElementSize = imageCanvas.getBoundingClientRect();
+				// canvasesContainer.style.height = `${canvasElementSize.height}px`;
+				ImgResToCanvasSizeRatio = img.width / canvasElementSize.width;
+				//render image
+				const ctx = imageCanvas.getContext('2d');
+				clearCanvas(imageCanvas);
+				ctx.drawImage(
+					img,
+					0,
+					0,
+					img.width,
+					img.height,
+					0,
+					0,
+					imageCanvas.width,
+					imageCanvas.height
+				);
 
-			imgDataOriginal = getImageData(imageCanvas);
-			//setup editor state
-			editorStatesHistory = [];
-			editorStatesUndoed = [];
-			currentEditorState = {
-				maskBrush: new Array(imgDataOriginal.height)
-					.fill(false)
-					.map(() => new Array(imgDataOriginal.width).fill(false)),
-				maskSAM: new Array(imgDataOriginal.height)
-					.fill(false)
-					.map(() => new Array(imgDataOriginal.width).fill(false)),
-				maskSAMDilated: new Array(imgDataOriginal.height)
-					.fill(false)
-					.map(() => new Array(imgDataOriginal.width).fill(false)),
-				clickedPositions: new Array<SAMmarker>(),
-				imgData: imgDataOriginal,
-				currentImgEmbedding: undefined
-			} as editorState;
+				imgDataOriginal = getImageData(imageCanvas);
+				//setup editor state
+				editorStatesHistory = [];
+				editorStatesUndoed = [];
+				currentEditorState = {
+					maskBrush: new Array(imgDataOriginal.height)
+						.fill(false)
+						.map(() => new Array(imgDataOriginal.width).fill(false)),
+					maskSAM: new Array(imgDataOriginal.height)
+						.fill(false)
+						.map(() => new Array(imgDataOriginal.width).fill(false)),
+					maskSAMDilated: new Array(imgDataOriginal.height)
+						.fill(false)
+						.map(() => new Array(imgDataOriginal.width).fill(false)),
+					clickedPositions: new Array<SAMmarker>(),
+					imgData: imgDataOriginal,
+					currentImgEmbedding: undefined
+				} as editorState;
+				resolve();
 
-			//0s timeout to handle UI loading state
-		};
+				//0s timeout to handle UI loading state
+			};
+
+			img.onerror = (error) => {
+				// Reject the Promise if there's an error loading the image
+				reject(error);
+			};
+		});
 	};
 
 	async function runModelEncoder(imageData: ImageData): Promise<void> {
@@ -288,7 +379,6 @@
 	//DECODER MODEL FUNCTIONS
 
 	async function createInputDict(currentEditorState: editorState) {
-		
 		let inputPoint: Array<{ x: number; y: number }> = currentEditorState.clickedPositions.map(
 			({ x, y }) => coordsToResizedImgScale(x, y)
 		);
@@ -319,14 +409,14 @@
 				data: new Float32Array(256 * 256).fill(0),
 				dims: [1, 1, 256, 256]
 			},
-			has_mask_input:	{
+			has_mask_input: {
 				data: [0],
 				dims: [1]
 			},
 			orig_im_size: {
 				data: [imageCanvas.height, imageCanvas.width],
 				dims: [2]
-			} 
+			}
 		};
 		return modelInput;
 	}
@@ -855,7 +945,9 @@
 			goto('/');
 			return;
 		}
+		console.log('setting up editor');
 		await setupEditor(uploadedImage, $uploadedImgFileName);
+		console.log('editor set up');
 
 		if (!$mainWorker) {
 			goto('/');
@@ -863,6 +955,7 @@
 			/*mainworker has set modelsLoaded function callback (setups editor etc.)
 			it is called either based on response to this message or after models are loaded 
 			(then, the message is sent automatically after loading)*/
+			console.log('checking models status');
 			$mainWorker.postMessage({ type: MESSAGE_TYPES.CHECK_MODELS_LOADING_STATE });
 		}
 		panzoom = Panzoom(canvasesContainer, {
@@ -883,7 +976,7 @@
 	let panzoom: any;
 	let currentZoom = 1;
 
-	function handlePanzoomSettingsChange(enablePan: boolean, anythingEssentialLoading: boolean){
+	function handlePanzoomSettingsChange(enablePan: boolean, anythingEssentialLoading: boolean) {
 		if (panzoom) {
 			panzoom.setOptions({
 				disablePan: !enablePan,
@@ -1228,7 +1321,7 @@
 						disabled={anythingEssentialLoading}
 						bind:checked={enablePan}
 					/>
-		
+
 					<label
 						for="choose-me"
 						class="select-none {anythingEssentialLoading
@@ -1241,32 +1334,38 @@
 				</div>
 				<button
 					on:click={(e) => e.preventDefault()}
-
 					disabled={anythingEssentialLoading}
 					class="cursor-default !px-1 lg:!px-3"
 				>
 					<div class="flex items-center justify-center gap-x-2">
 						<button
 							on:click={(e) => panzoom.zoomOut()}
-							class="{anythingEssentialLoading ? 'cursor-not-allowed' : 'cursor-pointer'} btn btn-sm !p-0 lg:!px-4 lg:!py-2"
+							class="{anythingEssentialLoading
+								? 'cursor-not-allowed'
+								: 'cursor-pointer'} btn btn-sm !p-0 lg:!px-4 lg:!py-2"
 						>
-							<MinusIcon
-							/>
+							<MinusIcon />
 						</button>
-	
+
 						<span
 							class="border-2 lg:text-md text-sm font-medium rounded-md p-2 border-surface-600 dark:border-surface-700"
-							>{Math.round(currentZoom*100)} %</span
+							>{Math.round(currentZoom * 100)} %</span
 						>
 						<button
 							on:click={(e) => panzoom.zoomIn()}
-							class="{anythingEssentialLoading ? 'cursor-not-allowed' : 'cursor-pointer'} btn btn-sm variant-filled !p-0 lg:!px-4 lg:!py-2"
+							class="{anythingEssentialLoading
+								? 'cursor-not-allowed'
+								: 'cursor-pointer'} btn btn-sm variant-filled !p-0 lg:!px-4 lg:!py-2"
 						>
-							<PlusIcon  />
+							<PlusIcon />
 						</button>
 					</div>
 				</button>
-				<button disabled={anythingEssentialLoading} on:click={() => panzoom.reset()} class="!px-2 !pr-3 lg:!px-4 lg:!pr-5">
+				<button
+					disabled={anythingEssentialLoading}
+					on:click={() => panzoom.reset()}
+					class="!px-2 !pr-3 lg:!px-4 lg:!pr-5"
+				>
 					<ScanEyeIcon />
 				</button>
 			</div>
