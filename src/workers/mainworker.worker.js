@@ -1,4 +1,8 @@
-import * as ort from 'onnxruntime-web';
+// import * as ort from 'onnxruntime-web';
+//@ts-ignore
+import * as ort from "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/esm/ort.webgpu.min.js";
+ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
+
 // import * as tf from '@tensorflow/tfjs';
 import { MESSAGE_TYPES } from './messageTypes';
 
@@ -19,17 +23,25 @@ let tfjsDecoder;
 let decoderOnnxSession;
 
 
-async function loadEncoderDecoder(){
-    if(encoderReady && decoderReady){
+async function loadEncoderDecoder() {
+    if (encoderReady && decoderReady) {
         return;
     }
-    encoderOnnxSession = await ort.InferenceSession.create(mobileSAMEncoderPath, {
-        executionProviders: ['wasm'],
-        graphOptimizationLevel: 'all'
-    });
+    try {
+
+        encoderOnnxSession = await ort.InferenceSession.create(mobileSAMEncoderPath, {
+            executionProviders: ['webgpu'],
+        });
+        console.log("init SAM encoder with webgpu succeeded")
+    }
+    catch (e) {
+        console.log("couldnt init SAM encoder with webgpu, running on wasm")
+        encoderOnnxSession = await ort.InferenceSession.create(mobileSAMEncoderPath, {
+            executionProviders: ['wasm'],
+        });
+    }
     decoderOnnxSession = await ort.InferenceSession.create(modelSAMDecoderONNXPath, {
         executionProviders: ['wasm'],
-        graphOptimizationLevel: 'all'
     });
     encoderReady = true;
     // await tf.ready();
@@ -48,11 +60,10 @@ async function loadEncoderDecoder(){
     decoderReady = true;
     self.postMessage({ type: MESSAGE_TYPES.ENCODER_DECODER_LOADED, data: "Encoder and decoder loaded" });
 }
-async function loadInpainter(){
-    if(!inpainterReady){
+async function loadInpainter() {
+    if (!inpainterReady) {
         miganOnnxSession = await ort.InferenceSession.create(mobile_inpainting_GAN, {
             executionProviders: ['wasm'],
-            graphOptimizationLevel: 'all'
         });
         inpainterReady = true;
         self.postMessage({ type: MESSAGE_TYPES.INPAINTER_LOADED, data: "Inpainter loaded" });
@@ -65,10 +76,10 @@ loadEncoderDecoder();
 
 async function checkLoadState() {
     if (encoderReady && decoderReady) {
-        if(inpainterReady){
+        if (inpainterReady) {
             self.postMessage({ type: MESSAGE_TYPES.ALL_MODELS_LOADED, data: "All models loaded" });
         }
-        else{
+        else {
             self.postMessage({ type: MESSAGE_TYPES.ENCODER_DECODER_LOADED, data: "Encoder decoder loaded" });
         }
     }
@@ -82,17 +93,21 @@ self.onmessage = async function (event) {
     if (type === MESSAGE_TYPES.CHECK_MODELS_LOADING_STATE) {
         checkLoadState();
     }
-    else if(type === MESSAGE_TYPES.LOAD_INPAINTER){
-        if(inpainterReady)
+    else if (type === MESSAGE_TYPES.LOAD_INPAINTER) {
+        if (inpainterReady)
             return;
         loadInpainter();
     }
     else if (type === MESSAGE_TYPES.DECODER_RUN && decoderReady) {
+        let startTime = performance.now();
         const resultTest = await runDecoderONNX(data);
+        console.log('Time taken for decoder run:', performance.now() - startTime, 'ms');
         self.postMessage({ type: MESSAGE_TYPES.DECODER_RUN_RESULT, data: resultTest });
     }
     else if (type === MESSAGE_TYPES.ENCODER_RUN && encoderReady) {
+        let startTime = performance.now();
         const encoderResult = await runEncoder(data);
+        console.log('Time taken for encoder run:', performance.now() - startTime, 'ms');
         self.postMessage({
             type: MESSAGE_TYPES.ENCODER_RUN_RESULT, data: {
                 embeddings: encoderResult['image_embeddings'].data,
@@ -101,13 +116,15 @@ self.onmessage = async function (event) {
         });
     }
     else if (type === MESSAGE_TYPES.INPAINTING_RUN && inpainterReady) {
+        let startTime = performance.now();
         const inpaintingResult = await runInpainting(data);
+        console.log('Time taken for inpainting run:', performance.now() - startTime, 'ms');
         self.postMessage({ type: MESSAGE_TYPES.INPAINTING_RUN_RESULT, data: inpaintingResult['result'].data });
     }
     else {
         self.postMessage({ type: MESSAGE_TYPES.TEST, data: "Response" });
     }
-    
+
     // Respond back to the main thread
 };
 
@@ -144,7 +161,7 @@ async function runEncoder(data) {
 // }
 
 // @ts-ignore
-async function runDecoderONNX(data){
+async function runDecoderONNX(data) {
     let inputDict = {
         has_mask_input: new ort.Tensor('float32', data.has_mask_input.data, data.has_mask_input.dims),
         image_embeddings: new ort.Tensor('float32', data.image_embeddings.data, data.image_embeddings.dims),

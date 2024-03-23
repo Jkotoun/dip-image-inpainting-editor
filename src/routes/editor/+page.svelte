@@ -1,6 +1,6 @@
+
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
-	// import * as tf from '@tensorflow/tfjs';
 	import { uploadedImgBase64, uploadedImgFileName } from '../../stores/imgStore';
 	import { mainWorker } from '../../stores/workerStore';
 	import { MESSAGE_TYPES } from '../../workers/messageTypes';
@@ -286,33 +286,7 @@
 	}
 
 	//DECODER MODEL FUNCTIONS
-	// let modelInputDict = {
-	// 		image_embeddings: {
-	// 			data: currentEditorState.currentImgEmbedding!.data,
-	// 			dims: currentEditorState.currentImgEmbedding!.dims
-	// 		},
 
-	// 		point_coords: {
-	// 			data: onnxInputPoints,
-	// 			dims: [1, onnxInputPoints.length, 2]
-	// 		},
-	// 		point_labels:{
-	// 			data: inputLabels,
-	// 			dims: [1, inputLabels.length]
-	// 		},
-	// 		mask_input: {
-	// 			data: new Float32Array(256 * 256).fill(0),
-	// 			dims: [1, 1, 256, 256]
-	// 		},
-	// 		has_mask_input: {
-	// 			data: [0],
-	// 			dims: [1]
-	// 		},
-	// 		orig_im_size:{
-	// 			data: [imageCanvas.height, imageCanvas.width],
-	// 			dims: [2]
-	// 		} 
-	// 	};
 	async function createInputDict(currentEditorState: editorState) {
 		
 		let inputPoint: Array<{ x: number; y: number }> = currentEditorState.clickedPositions.map(
@@ -1156,7 +1130,7 @@
 				{/if}
 			</div>
 			<div
-				class="canvases w-full"
+				class="canvases"
 				bind:this={canvasesContainer}
 				style="cursor: {enablePan
 					? 'move'
@@ -1359,7 +1333,5 @@
 	}
 	.no-margin {
 		margin: 0 !important;
-	}
-	.btn-padding{
 	}
 </style>

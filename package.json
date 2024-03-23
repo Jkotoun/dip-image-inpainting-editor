@@ -40,7 +40,6 @@
 		"jimp": "^0.22.10",
 		"lucide-svelte": "^0.356.0",
 		"npyjs": "^0.6.0",
-		"onnxruntime-web": "^1.17.0",
 		"vite-plugin-cross-origin-isolation": "^0.1.6",
 		"vite-plugin-static-copy": "^1.0.1"
 	}

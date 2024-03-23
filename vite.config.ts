@@ -8,14 +8,14 @@ export default defineConfig({
 	plugins: [
 		crossOriginIsolation(),
 		sveltekit(),
-	viteStaticCopy({
-		targets: [
-			{
-				src: 'node_modules/onnxruntime-web/dist/*.wasm',
-				dest: './src/workers'
-			},
-		]
-	}),
+	// viteStaticCopy({
+		// targets: [
+		// 	{
+		// 		src: 'node_modules/onnxruntime-web/dist/*.wasm',
+		// 		dest: './src/workers'
+		// 	},
+		// ]
+	// }),
 
 	]
 });
