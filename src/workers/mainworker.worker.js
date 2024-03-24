@@ -1,4 +1,5 @@
 //@ts-nocheck
+import {base} from '$app/paths';
 let ort;
 import("https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/esm/ort.webgpu.min.js")
   .then(module => {
@@ -13,16 +14,16 @@ import("https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/esm/ort.webgpu.
 
 import { MESSAGE_TYPES } from './messageTypes';
 
-const mobileSAMEncoderPath = '/mobile_sam.encoder.onnx';
+const mobileSAMEncoderPath = `${base}/mobile_sam.encoder.onnx`;
 //good results, but doesnt work with webgpu (wrong results), much slower on wasm (approx 3x)
 // const mobileSAMEncoderPath = '/mobile_sam.encoder_fp16.onnx';
 
-const mobile_inpainting_GAN = '/migan_pipeline_v2.onnx';
+const mobile_inpainting_GAN = `${base}/migan_pipeline_v2.onnx`;
 //doesnt work with webgpu (throws error), much slower on wasm (approx 3x), also slightly worse results
 // const mobile_inpainting_GAN = '/migan_pipeline_v2_fp16.onnx';
 
 
-const modelSAMDecoderONNXPath = '/sam_onnx_decoder_mobile_quantized.onnx';
+const modelSAMDecoderONNXPath = `${base}/sam_onnx_decoder_mobile_quantized.onnx`;
 let decoderReady = false;
 let encoderReady = false;
 let inpainterReady = false;
