@@ -1,28 +1,41 @@
 //@ts-nocheck
 let ort;
-import("https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/esm/ort.webgpu.min.js")
-  .then(module => {
-    ort = module.default;
-    ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
-    ort.env.logLevel = 'fatal';
-    loadEncoderDecoder();
-  })
-  .catch(error => {
-    console.error("Error loading onnxruntime-web:", error);
-  });
+
+let mobileSAMEncoderPath = "/mobile_sam.encoder.onnx";
+let modelSAMDecoderONNXPath = "/sam_onnx_decoder_mobile_quantized.onnx";
+let mobile_inpainting_GAN = "/migan_pipeline_v2.onnx";
+function init(env) {
+    console.log(env)
+    if(env !== "development"){
+        mobileSAMEncoderPath = appBasePath + mobileSAMEncoderPath;
+        modelSAMDecoderONNXPath = appBasePath + modelSAMDecoderONNXPath;
+        mobile_inpainting_GAN = appBasePath + mobile_inpainting_GAN;
+    }
+    import("https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/esm/ort.webgpu.min.js")
+        .then(module => {
+            ort = module.default;
+            ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
+            ort.env.logLevel = 'fatal';
+            loadEncoderDecoder();
+        })
+        .catch(error => {
+            console.error("Error loading onnxruntime-web:", error);
+        });
+}
+
 
 import { MESSAGE_TYPES } from './messageTypes';
-let dev = false;
-const mobileSAMEncoderPath = `${dev? "" : "/dip-image-inpainting-editor"}/mobile_sam.encoder.onnx`;
-//good results, but doesnt work with webgpu (wrong results), much slower on wasm (approx 3x)
-// const mobileSAMEncoderPath = '/mobile_sam.encoder_fp16.onnx';
+// let dev = false;
+// const mobileSAMEncoderPath = `${dev ? "" : "/dip-image-inpainting-editor"}/mobile_sam.encoder.onnx`;
+// //good results, but doesnt work with webgpu (wrong results), much slower on wasm (approx 3x)
+// // const mobileSAMEncoderPath = '/mobile_sam.encoder_fp16.onnx';
 
-const mobile_inpainting_GAN = `${dev? "" : "/dip-image-inpainting-editor"}/migan_pipeline_v2.onnx`;
-//doesnt work with webgpu (throws error), much slower on wasm (approx 3x), also slightly worse results
-// const mobile_inpainting_GAN = '/migan_pipeline_v2_fp16.onnx';
+// const mobile_inpainting_GAN = `${dev ? "" : "/dip-image-inpainting-editor"}/migan_pipeline_v2.onnx`;
+// //doesnt work with webgpu (throws error), much slower on wasm (approx 3x), also slightly worse results
+// // const mobile_inpainting_GAN = '/migan_pipeline_v2_fp16.onnx';
 
 
-const modelSAMDecoderONNXPath = `${dev? "" : "/dip-image-inpainting-editor"}/sam_onnx_decoder_mobile_quantized.onnx`;
+// const modelSAMDecoderONNXPath = `${dev ? "" : "/dip-image-inpainting-editor"}/sam_onnx_decoder_mobile_quantized.onnx`;
 let decoderReady = false;
 let encoderReady = false;
 let inpainterReady = false;
@@ -61,14 +74,14 @@ async function loadEncoderDecoder() {
 }
 async function loadInpainter() {
     if (!inpainterReady) {
-        try{
+        try {
             miganOnnxSession = await ort.InferenceSession.create(mobile_inpainting_GAN, {
                 executionProviders: ['webgpu'],
                 graphOptimizationLevel: 'disabled',
             });
             console.log("webgpu migan init succeeded")
         }
-        catch(e){
+        catch (e) {
             console.log("webgpu migan init failed, trying wasm")
             miganOnnxSession = await ort.InferenceSession.create(mobile_inpainting_GAN, {
                 executionProviders: ['wasm'],
@@ -97,7 +110,10 @@ async function checkLoadState() {
 
 self.onmessage = async function (event) {
     const { type, data } = event.data;
-    if (type === MESSAGE_TYPES.CHECK_MODELS_LOADING_STATE) {
+    if(type === MESSAGE_TYPES.INIT){
+        init(data.env)
+    }
+    else if (type === MESSAGE_TYPES.CHECK_MODELS_LOADING_STATE) {
         checkLoadState();
     }
     else if (type === MESSAGE_TYPES.LOAD_INPAINTER) {
@@ -143,7 +159,7 @@ self.onerror = function (event) {
 
 async function runEncoder(data) {
     let inputTensor = new ort.Tensor('float32', data.img_array_data, data.dims)
-    
+
     const output = await encoderOnnxSession.run({ input_image: inputTensor });
     return output
 }
@@ -177,7 +193,7 @@ async function runDecoderONNX(data) {
         point_coords: new ort.Tensor('float32', data.point_coords.data, data.point_coords.dims),
         point_labels: new ort.Tensor('float32', data.point_labels.data, data.point_labels.dims)
     }
-    
+
     const output = await decoderOnnxSession?.run(inputDict);
     let mask = output['masks'].data
     let dims = output['masks'].dims
@@ -207,7 +223,7 @@ function reshapeFloat32ArrayTo2D(array, numRows, numCols) {
 async function runInpainting(data) {
     let maskTensor = new ort.Tensor('uint8', data.maskTensorData.data, data.maskTensorData.dims);
     let imageTensor = new ort.Tensor('uint8', data.imageTensorData.data, data.imageTensorData.dims);
-    
+
     const output = await miganOnnxSession?.run({ image: imageTensor, mask: maskTensor });
     return output
 

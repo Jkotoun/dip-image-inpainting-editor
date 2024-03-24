@@ -8,6 +8,7 @@
 	import { FileUp } from 'lucide-svelte';
 	import { onMount } from 'svelte';
 	import {base} from '$app/paths';
+	import { MESSAGE_TYPES } from '../workers/messageTypes';
 
 	interface cardProps {
 		title: string;
@@ -62,6 +63,10 @@
 	onMount(() => {
 		if(!$mainWorker){
 			w = new Worker(new URL('./../workers/mainworker.worker.js', import.meta.url) , { type: "module" });
+			w.postMessage({ type: MESSAGE_TYPES.INIT, data:{
+				env: process.env.NODE_ENV,
+				appBasePath: base
+			} });
 			mainWorker.set(w);
 		}
 	});

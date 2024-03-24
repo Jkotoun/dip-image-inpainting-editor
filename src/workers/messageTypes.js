@@ -1,5 +1,5 @@
 export const MESSAGE_TYPES = {
-    TEST: 'test',
+    INIT: 'init',
     CHECK_MODELS_LOADING_STATE: 'checkModelsLoadingState',
     NONE_LOADED: 'allLoading',
     ALL_MODELS_LOADED: 'allModelsReady',
