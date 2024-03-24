@@ -4,7 +4,7 @@ let ort;
 let mobileSAMEncoderPath = "/mobile_sam.encoder.onnx";
 let modelSAMDecoderONNXPath = "/sam_onnx_decoder_mobile_quantized.onnx";
 let mobile_inpainting_GAN = "/migan_pipeline_v2.onnx";
-function init(env) {
+function init(env, appBasePath) {
     console.log(env)
     if(env !== "development"){
         mobileSAMEncoderPath = appBasePath + mobileSAMEncoderPath;
@@ -111,7 +111,7 @@ async function checkLoadState() {
 self.onmessage = async function (event) {
     const { type, data } = event.data;
     if(type === MESSAGE_TYPES.INIT){
-        init(data.env)
+        init(data.env, data.appBasePath)
     }
     else if (type === MESSAGE_TYPES.CHECK_MODELS_LOADING_STATE) {
         checkLoadState();
