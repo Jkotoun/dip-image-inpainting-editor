@@ -39,7 +39,7 @@ async function loadEncoderDecoder() {
     }
     try {
         encoderOnnxSession = await ort.InferenceSession.create(mobileSAMEncoderPath, {
-            executionProviders: ['webgpu'],
+            executionProviders: ['wasm'],
             graphOptimizationLevel: 'all',
         });
         console.log("init SAM encoder with webgpu succeeded")
@@ -63,7 +63,7 @@ async function loadInpainter() {
     if (!inpainterReady) {
         try{
             miganOnnxSession = await ort.InferenceSession.create(mobile_inpainting_GAN, {
-                executionProviders: ['webgpu'],
+                executionProviders: ['wasm'],
                 graphOptimizationLevel: 'disabled',
             });
             console.log("webgpu migan init succeeded")
