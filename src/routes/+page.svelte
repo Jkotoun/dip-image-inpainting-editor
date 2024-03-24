@@ -7,6 +7,8 @@
 	import { AppBar, AppShell, FileDropzone, LightSwitch } from '@skeletonlabs/skeleton';
 	import { FileUp } from 'lucide-svelte';
 	import { onMount } from 'svelte';
+	import {base} from '$app/paths';
+
 	interface cardProps {
 		title: string;
 		description: string;
@@ -17,23 +19,23 @@
 		{
 			title: 'Step 1: Upload Your Image',
 			description: 'Upload or drag and drop an image into the “Upload Image” frame.',
-			image: '/img/process_part1.png'
+			image: `${base}/img/process_part1.png`
 		},
 		{
 			title: 'Step 2: Select area you want to remove using smart selector tool or brush',
 			description:
 				'Specify one or more points of the object you want to select using smart selector tool. Alternatively, use a brush tool to select the whole area, or to refine area selected by smart selector.',
-			image: '/img/process_part2.png'
+			image: `${base}/img/process_part2.png`
 		},
 		{
 			title: 'Step 3: Remove the area',
 			description: 'Click the “Remove” button and wait for the result.',
-			image: '/img/process_part3.png'
+			image: `${base}/img/process_part3.png`
 		},
 		{
 			title: 'Step 4: Download the result image',
 			description: 'Compare the result with the original image and download the result image.',
-			image: '/img/process_part4.png'
+			image: `${base}/img/process_part4.png`
 		}
 	];
 
@@ -51,7 +53,7 @@
 			uploadedImgBase64.set(e.target?.result as string);
 
 			// Redirect to the editor page
-			goto('/editor');
+			goto(`${base}/editor`);
 		};
 
 		reader.readAsDataURL(uploadedImageFile);
@@ -69,11 +71,11 @@
 	<svelte:fragment slot="header">
 		<AppBar>
 			<svelte:fragment slot="lead">
-				<a href="/" class="font-bold">Smart Object remover</a>
+				<a href={base == '' ? '/' : base} class="font-bold">Smart Object remover</a>
 			</svelte:fragment>
 			<svelte:fragment slot="trail">
-				<a href="/" class="font-semibold">Home</a>
-				<a href="/about" class="font-semibold">About</a>
+				<a href={base == '' ? '/' : base} class="font-semibold">Home</a>
+				<a href="{base}/about" class="font-semibold">About</a>
 				<LightSwitch />
 			</svelte:fragment>
 		</AppBar>
@@ -88,7 +90,7 @@
 			</h3>
 			<div class="md:pt-16 pt-4 flex md:flex-row flex-col-reverse gap-4">
 				<div class="flex-1">
-					<img src="/img/before_after_example.png" alt="before_after_exampler" />
+					<img src="{base}/img/before_after_example.png" alt="before_after_exampler" />
 				</div>
 				<FileDropzone
 					class="flex-1"

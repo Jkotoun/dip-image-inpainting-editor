@@ -13,6 +13,7 @@
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-auto": "^2.0.0",
+		"@sveltejs/adapter-static": "2.0.3",
 		"@sveltejs/kit": "^1.20.4",
 		"@typescript-eslint/eslint-plugin": "^6.0.0",
 		"@typescript-eslint/parser": "^6.0.0",
@@ -20,6 +21,7 @@
 		"eslint": "^8.28.0",
 		"eslint-config-prettier": "^8.5.0",
 		"eslint-plugin-svelte": "^2.30.0",
+		"gh-pages": "^6.1.1",
 		"postcss": "^8.4.35",
 		"prettier": "^2.8.0",
 		"prettier-plugin-svelte": "^2.10.1",
@@ -35,6 +37,7 @@
 		"@panzoom/panzoom": "^4.5.1",
 		"@skeletonlabs/skeleton": "^2.9.0",
 		"@skeletonlabs/tw-plugin": "^0.3.1",
+		"dotenv": "^16.4.5",
 		"jimp": "^0.22.10",
 		"lucide-svelte": "^0.356.0",
 		"npyjs": "^0.6.0",

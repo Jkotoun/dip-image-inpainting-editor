@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
+	import {base} from '$app/paths';
 	import { uploadedImgBase64, uploadedImgFileName } from '../../stores/imgStore';
 	import { mainWorker } from '../../stores/workerStore';
 	import { MESSAGE_TYPES } from '../../workers/messageTypes';
@@ -127,7 +128,6 @@
 			decoderRunning = false;
 		} else if (type === MESSAGE_TYPES.ENCODER_RUN_RESULT && !encoderLoading) {
 			// let img_tensor = tf.tensor(data.embeddings as any, data.dims as any, 'float32');
-			console.log("encoder run response")
 			currentEditorState.currentImgEmbedding = {
 				data: data.embeddings,
 				dims: data.dims
@@ -141,7 +141,6 @@
 				}
 			);
 		} else if (type === MESSAGE_TYPES.ALL_MODELS_LOADED) {
-			console.log('all loaded already');
 			decoderLoading = encoderLoading = inpainterLoading = false;
 			//run only if editor state is already set and embedding hasnt been run already
 			if (
@@ -150,7 +149,6 @@
 				!isEmbedderRunning &&
 				!currentEditorState.currentImgEmbedding
 			) {
-				console.log('running');
 				isEmbedderRunning = true;
 				runModelEncoder(currentEditorState.imgData);
 			}
@@ -158,26 +156,18 @@
 		} else if (type === MESSAGE_TYPES.ENCODER_DECODER_LOADED) {
 			encoderLoading = decoderLoading = false;
 			//run only if editor state is already set and embedding hasnt been run already
-			console.log('response - encoder decoder loaded');
-			console.log('editor state');
-			console.log(currentEditorState);
-			console.log(currentEditorState.imgData);
-			console.log(!isEmbedderRunning);
-			console.log(!currentEditorState.currentImgEmbedding);
 			if (
 				currentEditorState &&
 				currentEditorState.imgData &&
 				!isEmbedderRunning &&
 				!currentEditorState.currentImgEmbedding
 			) {
-				console.log('running embedding');
 				isEmbedderRunning = true;
 				runModelEncoder(currentEditorState.imgData).then((_) => {
 					$mainWorker?.postMessage({ type: MESSAGE_TYPES.LOAD_INPAINTER });
 				});
 			}
 		} else if (type === MESSAGE_TYPES.NONE_LOADED) {
-			console.log('models not loaded yet, waiting');
 		}
 	}
 	if ($mainWorker) {
@@ -321,10 +311,8 @@
 	};
 
 	async function runModelEncoder(imageData: ImageData): Promise<void> {
-		console.log("run enc function start")
 		let resizedImgRGBData = await getResizedImgRGBArray(imageData, longSideLength);
 		let floatArray = Float32Array.from(resizedImgRGBData.rgbArray);
-		console.log("posting message run encoder")
 		$mainWorker?.postMessage({
 			type: MESSAGE_TYPES.ENCODER_RUN,
 			data: {
@@ -332,7 +320,6 @@
 				dims: [resizedImgRGBData.height, resizedImgRGBData.width, 3]
 			}
 		});
-		console.log("leaving func")
 	}
 
 	//DECODER MODEL FUNCTIONS
@@ -891,7 +878,7 @@
 
 	onMount(async () => {
 		if ($uploadedImgBase64 === null || $uploadedImgFileName === '') {
-			goto('/');
+			goto(base == '' ? '/' : base);
 		}
 		uploadedImage = $uploadedImgBase64;
 		window.addEventListener('resize', () => {
@@ -901,20 +888,17 @@
 			}
 		});
 		if (!uploadedImage || !uploadedImgFileName) {
-			goto('/');
+			goto(base == '' ? '/' : base);
 			return;
 		}
-		console.log('setting up editor');
 		await setupEditor(uploadedImage, $uploadedImgFileName);
-		console.log('editor set up');
 
 		if (!$mainWorker) {
-			goto('/');
+			goto(base == '' ? '/' : base);
 		} else {
 			/*mainworker has set modelsLoaded function callback (setups editor etc.)
 			it is called either based on response to this message or after models are loaded 
 			(then, the message is sent automatically after loading)*/
-			console.log('checking models status');
 			$mainWorker.postMessage({ type: MESSAGE_TYPES.CHECK_MODELS_LOADING_STATE });
 		}
 		panzoom = Panzoom(canvasesContainer, {
@@ -945,8 +929,7 @@
 	}
 
 	$: handlePanzoomSettingsChange(enablePan, anythingEssentialLoading);
-	//  const elem = document.getElementById('test');
-	// 	if (!elem) return;
+
 </script>
 
 <Drawer>
@@ -1029,11 +1012,11 @@
 						</svg>
 					</span>
 				</button>
-				<a href="/" class="font-bold">Smart Object remover</a>
+				<a href={base == '' ? '/' : base} class="font-bold">Smart Object remover</a>
 			</svelte:fragment>
 			<svelte:fragment slot="trail">
-				<a href="/" class="font-semibold">Home</a>
-				<a href="/about" class="font-semibold">About</a>
+				<a href={base == '' ? '/' : base} class="font-semibold">Home</a>
+				<a href="{base}/about" class="font-semibold">About</a>
 				<LightSwitch />
 			</svelte:fragment>
 		</AppBar>
