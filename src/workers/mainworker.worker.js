@@ -1,9 +1,16 @@
-// import * as ort from 'onnxruntime-web';
-//@ts-ignore
-import * as ort from "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/esm/ort.webgpu.min.js";
-ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
+//@ts-nocheck
+let ort;
+import("https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/esm/ort.webgpu.min.js")
+  .then(module => {
+    ort = module.default;
+    ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
+    ort.env.logLevel = 'fatal';
+    loadEncoderDecoder();
+  })
+  .catch(error => {
+    console.error("Error loading onnxruntime-web:", error);
+  });
 
-// import * as tf from '@tensorflow/tfjs';
 import { MESSAGE_TYPES } from './messageTypes';
 
 const mobileSAMEncoderPath = '/mobile_sam.encoder.onnx';
@@ -15,16 +22,15 @@ const mobile_inpainting_GAN = '/migan_pipeline_v2.onnx';
 // const mobile_inpainting_GAN = '/migan_pipeline_v2_fp16.onnx';
 
 
-
 const modelSAMDecoderONNXPath = '/sam_onnx_decoder_mobile_quantized.onnx';
 let decoderReady = false;
 let encoderReady = false;
 let inpainterReady = false;
-// @ts-ignore
+
 let encoderOnnxSession;
-// @ts-ignore
+
 let miganOnnxSession;
-// @ts-ignore
+
 let decoderOnnxSession;
 
 async function loadEncoderDecoder() {
@@ -73,9 +79,6 @@ async function loadInpainter() {
         self.postMessage({ type: MESSAGE_TYPES.INPAINTER_LOADED, data: "Inpainter loaded" });
     }
 }
-
-loadEncoderDecoder();
-
 
 
 async function checkLoadState() {
@@ -137,15 +140,15 @@ self.onerror = function (event) {
     console.error(event);
 }
 
-// @ts-ignore
+
 async function runEncoder(data) {
     let inputTensor = new ort.Tensor('float32', data.img_array_data, data.dims)
-    // @ts-ignore
+    
     const output = await encoderOnnxSession.run({ input_image: inputTensor });
     return output
 }
 
-// // @ts-ignore
+// 
 // async function runDecoder(data) {
 
 //     let inputDict = {
@@ -156,15 +159,15 @@ async function runEncoder(data) {
 //         "point_coords": tf.tensor(data.point_coords.data, data.point_coords.dims, 'float32'),
 //         "point_labels": tf.tensor(data.point_labels.data, data.point_labels.dims, 'float32'),
 //     }
-//     // @ts-ignore
+//     
 //     const predictions = await tfjsDecoder.executeAsync(inputDict);
 
-//     // @ts-ignore
+//     
 //     const lastData = await predictions[predictions.length - 1].arraySync();
 //     return lastData[0][0];
 // }
 
-// @ts-ignore
+
 async function runDecoderONNX(data) {
     let inputDict = {
         has_mask_input: new ort.Tensor('float32', data.has_mask_input.data, data.has_mask_input.dims),
@@ -174,14 +177,14 @@ async function runDecoderONNX(data) {
         point_coords: new ort.Tensor('float32', data.point_coords.data, data.point_coords.dims),
         point_labels: new ort.Tensor('float32', data.point_labels.data, data.point_labels.dims)
     }
-    // @ts-ignore
+    
     const output = await decoderOnnxSession?.run(inputDict);
     let mask = output['masks'].data
     let dims = output['masks'].dims
     const reshapedArray = reshapeFloat32ArrayTo2D(mask, dims[2], dims[3]);
     return reshapedArray
 }
-//@ts-ignore
+
 function reshapeFloat32ArrayTo2D(array, numRows, numCols) {
     if (numRows * numCols !== array.length) {
         throw new Error('Number of elements in the array does not match the specified dimensions.');
@@ -200,11 +203,11 @@ function reshapeFloat32ArrayTo2D(array, numRows, numCols) {
 }
 
 
-// @ts-ignore
+
 async function runInpainting(data) {
     let maskTensor = new ort.Tensor('uint8', data.maskTensorData.data, data.maskTensorData.dims);
     let imageTensor = new ort.Tensor('uint8', data.imageTensorData.data, data.imageTensorData.dims);
-    // @ts-ignore
+    
     const output = await miganOnnxSession?.run({ image: imageTensor, mask: maskTensor });
     return output
 

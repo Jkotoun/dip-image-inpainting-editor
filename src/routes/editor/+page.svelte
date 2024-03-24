@@ -127,7 +127,7 @@
 			decoderRunning = false;
 		} else if (type === MESSAGE_TYPES.ENCODER_RUN_RESULT && !encoderLoading) {
 			// let img_tensor = tf.tensor(data.embeddings as any, data.dims as any, 'float32');
-			console.log(data.embeddings)
+			console.log("encoder run response")
 			currentEditorState.currentImgEmbedding = {
 				data: data.embeddings,
 				dims: data.dims
@@ -193,51 +193,6 @@
 		}
 	}
 
-	// if ($mainWorker) {
-	// 	$mainWorker.onmessage = async (event) => {
-	// 		const { type } = event.data;
-	// 		if (type === MESSAGE_TYPES.ALL_MODELS_LOADED) {
-	// 			console.log('all loaded already');
-	// 			decoderLoading = encoderLoading = inpainterLoading = false;
-	// 			$mainWorker!.onmessage = handleWorkerModelsMessages;
-	// 			//run only if editor state is already set and embedding hasnt been run already
-	// 			if (
-	// 				currentEditorState &&
-	// 				currentEditorState.imgData &&
-	// 				!isEmbedderRunning &&
-	// 				!currentEditorState.currentImgEmbedding
-	// 			) {
-	// 				console.log('running');
-	// 				isEmbedderRunning = true;
-	// 				runModelEncoder(currentEditorState.imgData);
-	// 			}
-	// 			// Continue with your logic here...
-	// 		} else if (type === MESSAGE_TYPES.ENCODER_DECODER_LOADED) {
-	// 			$mainWorker!.onmessage = handleWorkerModelsMessages;
-	// 			$mainWorker?.postMessage({ type: MESSAGE_TYPES.LOAD_INPAINTER });
-	// 			encoderLoading = decoderLoading = false;
-	// 			//run only if editor state is already set and embedding hasnt been run already
-	// 			console.log('response - encoder decoder loaded');
-	// 			console.log('editor state');
-	// 			console.log(currentEditorState);
-	// 			console.log(currentEditorState.imgData);
-	// 			console.log(!isEmbedderRunning);
-	// 			console.log(!currentEditorState.currentImgEmbedding);
-	// 			if (
-	// 				currentEditorState &&
-	// 				currentEditorState.imgData &&
-	// 				!isEmbedderRunning &&
-	// 				!currentEditorState.currentImgEmbedding
-	// 			) {
-	// 				console.log('running embedding');
-	// 				isEmbedderRunning = true;
-	// 				runModelEncoder(currentEditorState.imgData);
-	// 			}
-	// 		} else if (type === MESSAGE_TYPES.NONE_LOADED) {
-	// 			console.log('models not loaded yet, waiting');
-	// 		}
-	// 	};
-	// }
 
 	//EMBEDDING FUNCTIONS
 	async function getResizedImgRGBArray(
@@ -366,8 +321,10 @@
 	};
 
 	async function runModelEncoder(imageData: ImageData): Promise<void> {
+		console.log("run enc function start")
 		let resizedImgRGBData = await getResizedImgRGBArray(imageData, longSideLength);
 		let floatArray = Float32Array.from(resizedImgRGBData.rgbArray);
+		console.log("posting message run encoder")
 		$mainWorker?.postMessage({
 			type: MESSAGE_TYPES.ENCODER_RUN,
 			data: {
@@ -375,6 +332,7 @@
 				dims: [resizedImgRGBData.height, resizedImgRGBData.width, 3]
 			}
 		});
+		console.log("leaving func")
 	}
 
 	//DECODER MODEL FUNCTIONS
