@@ -137,12 +137,14 @@ self.onmessage = async function (event) {
                 dims: encoderResult['image_embeddings'].dims
             }
         });
+        encoderResult['image_embeddings'].dispose()
     }
     else if (type === MESSAGE_TYPES.INPAINTING_RUN && inpainterReady) {
         let startTime = performance.now();
         const inpaintingResult = await runInpainting(data);
         console.log('Time taken for inpainting run:', performance.now() - startTime, 'ms');
         self.postMessage({ type: MESSAGE_TYPES.INPAINTING_RUN_RESULT, data: inpaintingResult['result'].data });
+        inpaintingResult['result'].dispose();
     }
     else {
         self.postMessage({ type: MESSAGE_TYPES.TEST, data: "Response" });
@@ -161,6 +163,7 @@ async function runEncoder(data) {
     let inputTensor = new ort.Tensor('float32', data.img_array_data, data.dims)
 
     const output = await encoderOnnxSession.run({ input_image: inputTensor });
+    inputTensor.dispose();
     return output
 }
 
@@ -195,9 +198,14 @@ async function runDecoderONNX(data) {
     }
 
     const output = await decoderOnnxSession?.run(inputDict);
+    //dispose input tensors
+    for (const key in inputDict) {
+        inputDict[key].dispose();
+    }
     let mask = output['masks'].data
     let dims = output['masks'].dims
     const reshapedArray = reshapeFloat32ArrayTo2D(mask, dims[2], dims[3]);
+    output['masks'].dispose();
     return reshapedArray
 }
 
@@ -225,6 +233,8 @@ async function runInpainting(data) {
     let imageTensor = new ort.Tensor('uint8', data.imageTensorData.data, data.imageTensorData.dims);
 
     const output = await miganOnnxSession?.run({ image: imageTensor, mask: maskTensor });
+    maskTensor.dispose();
+    imageTensor.dispose();
     return output
 
 }
