@@ -1323,7 +1323,7 @@
 								track="stroke-white/30"
 								value={undefined}
 							/>
-							Loading model
+							<span class="hidden lg:inline"> Loading model</span>
 						{:else}
 							<WandSparkles size={18} />
 							Remove
