@@ -243,14 +243,10 @@
 					imageCanvas.style.width =
 						maskCanvas.style.width =
 						originalImgElement.style.width =
-							'100%';
+							'auto';
 					imageCanvas.style.height =
 						maskCanvas.style.height =
 						originalImgElement.style.height =
-							'auto';
-					imageCanvas.style.maxHeight =
-						maskCanvas.style.maxHeight =
-						originalImgElement.style.maxHeight =
 							'75vh';
 				} else {
 					imageCanvas.style.width =
@@ -1166,6 +1162,7 @@
 			</div>
 			<div
 				class="canvases"
+				on:resize={() => console.log("resized")}
 				bind:this={canvasesContainer}
 				style="cursor: {enablePan
 					? 'move'
