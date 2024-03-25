@@ -46,6 +46,9 @@ let miganOnnxSession;
 
 let decoderOnnxSession;
 
+let encoderOnnxCurrentProvider;
+let inpainterOnnxCurrentProvider;
+
 async function loadEncoderDecoder() {
     if (encoderReady && decoderReady) {
         return;
@@ -55,6 +58,7 @@ async function loadEncoderDecoder() {
             executionProviders: ['webgpu'],
             graphOptimizationLevel: 'all',
         });
+        encoderOnnxCurrentProvider = 'webgpu';
         console.log("init SAM encoder with webgpu succeeded")
     }
     catch (e) {
@@ -63,6 +67,7 @@ async function loadEncoderDecoder() {
             executionProviders: ['wasm'],
             graphOptimizationLevel: 'all'
         });
+        encoderOnnxCurrentProvider = 'wasm';
     }
     decoderOnnxSession = await ort.InferenceSession.create(modelSAMDecoderONNXPath, {
         executionProviders: ['wasm'],
@@ -70,6 +75,8 @@ async function loadEncoderDecoder() {
     });
     encoderReady = true;
     decoderReady = true;
+    console.log(encoderOnnxSession)
+    console.log(decoderOnnxSession)
     self.postMessage({ type: MESSAGE_TYPES.ENCODER_DECODER_LOADED, data: "Encoder and decoder loaded" });
 }
 async function loadInpainter() {
@@ -79,6 +86,7 @@ async function loadInpainter() {
                 executionProviders: ['webgpu'],
                 graphOptimizationLevel: 'disabled',
             });
+            inpainterOnnxCurrentProvider = 'webgpu';
             console.log("webgpu migan init succeeded")
         }
         catch (e) {
@@ -87,6 +95,7 @@ async function loadInpainter() {
                 executionProviders: ['wasm'],
                 graphOptimizationLevel: 'all'
             });
+            inpainterOnnxCurrentProvider = 'wasm';
         }
         inpainterReady = true;
         self.postMessage({ type: MESSAGE_TYPES.INPAINTER_LOADED, data: "Inpainter loaded" });
@@ -123,31 +132,54 @@ self.onmessage = async function (event) {
     }
     else if (type === MESSAGE_TYPES.DECODER_RUN && decoderReady) {
         let startTime = performance.now();
-        const resultTest = await runDecoderONNX(data);
-        console.log('Time taken for decoder run:', performance.now() - startTime, 'ms');
-        self.postMessage({ type: MESSAGE_TYPES.DECODER_RUN_RESULT, data: resultTest });
+        let decoderResult;
+        try{
+
+            decoderResult = await runDecoderONNX(data);
+            console.log('Time taken for decoder run:', performance.now() - startTime, 'ms');
+            self.postMessage({ type: MESSAGE_TYPES.DECODER_RUN_RESULT_SUCCESS, data: decoderResult });
+        }
+        catch(e){
+            console.log("crashed decoder run")
+            console.error(e)
+            self.postMessage({ type: MESSAGE_TYPES.DECODER_RUN_RESULT_FAILURE, data: "Error running decoder" });
+        }
     }
     else if (type === MESSAGE_TYPES.ENCODER_RUN && encoderReady) {
         let startTime = performance.now();
-        const encoderResult = await runEncoder(data);
-        console.log('Time taken for encoder run:', performance.now() - startTime, 'ms');
-        self.postMessage({
-            type: MESSAGE_TYPES.ENCODER_RUN_RESULT, data: {
-                embeddings: encoderResult['image_embeddings'].data,
-                dims: encoderResult['image_embeddings'].dims
-            }
-        });
-        encoderResult['image_embeddings'].dispose()
+        let encoderResult;
+        try{
+            encoderResult = await runEncoder(data);
+            self.postMessage({
+                type: MESSAGE_TYPES.ENCODER_RUN_RESULT_SUCCESS, data: {
+                    embeddings: encoderResult['image_embeddings'].data,
+                    dims: encoderResult['image_embeddings'].dims
+                }
+            });
+            encoderResult['image_embeddings'].dispose()
+            console.log('Time taken for encoder run:', performance.now() - startTime, 'ms');
+        }
+        catch(e){
+            console.log("crashed encoder run")
+            console.error(e)
+            self.postMessage({ type: MESSAGE_TYPES.ENCODER_RUN_RESULT_FAILURE, data: "Error running encoder" });
+        }
+       
     }
     else if (type === MESSAGE_TYPES.INPAINTING_RUN && inpainterReady) {
         let startTime = performance.now();
-        const inpaintingResult = await runInpainting(data);
-        console.log('Time taken for inpainting run:', performance.now() - startTime, 'ms');
-        self.postMessage({ type: MESSAGE_TYPES.INPAINTING_RUN_RESULT, data: inpaintingResult['result'].data });
-        inpaintingResult['result'].dispose();
-    }
-    else {
-        self.postMessage({ type: MESSAGE_TYPES.TEST, data: "Response" });
+        let inpaintingResult;
+        try{
+            inpaintingResult = await runInpainting(data);
+            console.log('Time taken for inpainting run:', performance.now() - startTime, 'ms');
+            self.postMessage({ type: MESSAGE_TYPES.INPAINTING_RUN_RESULT_SUCCESS, data: inpaintingResult['result'].data });
+            inpaintingResult['result'].dispose();
+        }
+        catch(e){
+            console.log("crashed inpainting run")
+            console.error(e)
+            self.postMessage({ type: MESSAGE_TYPES.INPAINTING_RUN_RESULT_FAILURE, data: "Error running inpainter" });
+        }
     }
 
     // Respond back to the main thread
@@ -238,3 +270,4 @@ async function runInpainting(data) {
     return output
 
 }
+

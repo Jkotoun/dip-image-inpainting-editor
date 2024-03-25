@@ -116,7 +116,7 @@
 		if (type === MESSAGE_TYPES.INPAINTER_LOADED) {
 			inpainterLoading = false;
 		}
-		if (type === MESSAGE_TYPES.DECODER_RUN_RESULT && !decoderLoading) {
+		if (type === MESSAGE_TYPES.DECODER_RUN_RESULT_SUCCESS && !decoderLoading) {
 			const SAMMaskArray = data.map((val: number[]) => val.map((v) => v > 0.0));
 			if (SAMMaskArray) {
 				dilateMaskByPixels(pixelsDilatation, SAMMaskArray).then((dilatedMask) => {
@@ -126,14 +126,14 @@
 				});
 			}
 			decoderRunning = false;
-		} else if (type === MESSAGE_TYPES.ENCODER_RUN_RESULT && !encoderLoading) {
+		} else if (type === MESSAGE_TYPES.ENCODER_RUN_RESULT_SUCCESS && !encoderLoading) {
 			// let img_tensor = tf.tensor(data.embeddings as any, data.dims as any, 'float32');
 			currentEditorState.currentImgEmbedding = {
 				data: data.embeddings,
 				dims: data.dims
 			};
 			isEmbedderRunning = false;
-		} else if (type === MESSAGE_TYPES.INPAINTING_RUN_RESULT && !inpainterLoading) {
+		} else if (type === MESSAGE_TYPES.INPAINTING_RUN_RESULT_SUCCESS && !inpainterLoading) {
 			RGB_CHW_array_to_imageData(data, imageCanvas.height, imageCanvas.width).then(
 				(resultImgData) => {
 					setInpaintedImgEditorState(resultImgData);
@@ -183,6 +183,7 @@
 		}
 	}
 
+	
 
 	//EMBEDDING FUNCTIONS
 	async function getResizedImgRGBArray(

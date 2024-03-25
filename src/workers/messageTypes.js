@@ -7,9 +7,14 @@ export const MESSAGE_TYPES = {
     INPAINTER_LOADED: 'inpainterReady',
     LOAD_INPAINTER: 'loadInpainter',
     DECODER_RUN: 'decoderRun',
-    DECODER_RUN_RESULT: 'decoderRunResult',
+    DECODER_RUN_RESULT_SUCCESS: 'decoderRunResultSuccess',
+    DECODER_RUN_RESULT_FAILURE: 'decoderRunResultFailure',
     ENCODER_RUN: 'encoderRun',
-    ENCODER_RUN_RESULT: 'encoderRunResult',
+    ENCODER_RUN_RESULT_SUCCESS: 'encoderRunResultSuccess',
+    ENCODER_RUN_RESULT_FAILURE: 'encoderRunResultFailure',
     INPAINTING_RUN: 'inpainterRun',
-    INPAINTING_RUN_RESULT: 'inpainterRunResult',
+    INPAINTING_RUN_RESULT_SUCCESS: 'inpainterRunResultSuccess',
+    INPAINTING_RUN_RESULT_FAILURE: 'inpainterRunResultFailure',
+    
+
 }
