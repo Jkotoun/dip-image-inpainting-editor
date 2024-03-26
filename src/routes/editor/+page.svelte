@@ -1128,7 +1128,7 @@
 		style="max-height: calc(100vh - {headerHeightPx}px)"
 	>
 		<!-- top buttons panel -->
-		<div class="flex flex-1 justify-between">
+		<div class="flex flex-none justify-between">
 			<!-- left buttons -->
 			<div class="flex lg:gap-x-2 gap-x-1">
 				<button
@@ -1182,9 +1182,7 @@
 			</div>
 		</div>
 		<!-- editor canvases-->
-		<div
-			id="mainEditorContainer"
-			class="flex-auto overflow-hidden"
+		<div id="mainEditorContainer" class="grow overflow-hidden"
 			style="cursor: {anythingEssentialLoading ? 'not-allowed' : 'default'}"
 		>
 			<div
@@ -1204,7 +1202,7 @@
 				{/if}
 			</div>
 			<div
-				class="canvases"
+				class="canvases w-full"
 				on:resize={() => console.log('resized')}
 				bind:this={canvasesContainer}
 				style="cursor: {enablePan
@@ -1315,7 +1313,7 @@
 			</div>
 		</div>
 		<!-- bottom buttons -->
-		<div class="flex flex-1 flex-wrap lg:gap-x-2 gap-x-1">
+		<div class="flex flex-none flex-wrap lg:gap-x-2 gap-x-1">
 			<div class="sm:flex-1 flex-0" />
 			<div
 				class="btn-group variant-filled {anythingEssentialLoading
