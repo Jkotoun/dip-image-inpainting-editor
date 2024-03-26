@@ -1203,7 +1203,6 @@
 			</div>
 			<div
 				class="canvases w-full"
-				on:resize={() => console.log('resized')}
 				bind:this={canvasesContainer}
 				style="cursor: {enablePan
 					? 'move'
