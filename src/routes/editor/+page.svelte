@@ -447,7 +447,7 @@
 
 	function reset() {
 		//clear all states
-		// panzoom.reset();
+		panzoom.reset();
 		currentEditorState = {
 			maskBrush: new Array(imgDataOriginal.height)
 				.fill(false)
@@ -725,8 +725,6 @@
 		}
 	}
 
-	
-
 	async function renderEditorState(
 		state: editorState,
 		imageCanvas: HTMLCanvasElement,
@@ -908,9 +906,8 @@
 	}
 	let headerHeightPx = 0;
 	onMount(async () => {
-
 		let header = document.querySelector('header');
-		if(header){
+		if (header) {
 			headerHeightPx = header.getBoundingClientRect().height;
 		}
 		if ($uploadedImgBase64 === null || $uploadedImgFileName === '') {
@@ -937,34 +934,34 @@
 			(then, the message is sent automatically after loading)*/
 			$mainWorker.postMessage({ type: MESSAGE_TYPES.CHECK_MODELS_LOADING_STATE });
 		}
-		// panzoom = Panzoom(canvasesContainer, {
-		// 	disablePan: !enablePan,
-		// 	minScale: 1,
-		// 	maxScale: 10,
-		// 	disableZoom: anythingEssentialLoading
-		// }) as PanzoomObject;
-		// canvasesContainer.parentElement!.addEventListener('wheel', panzoom.zoomWithWheel);
-		// canvasesContainer.addEventListener('panzoomchange', (event: any) => {
-		// 	currentZoom = event.detail.scale;
-		// });
-		// setTimeout(() => panzoom.zoom(0, 100));
-		// panzoom.zoom(5, { animate: true });
+		panzoom = Panzoom(canvasesContainer, {
+			disablePan: !enablePan,
+			minScale: 1,
+			maxScale: 10,
+			disableZoom: anythingEssentialLoading
+		}) as PanzoomObject;
+		canvasesContainer.parentElement!.addEventListener('wheel', panzoom.zoomWithWheel);
+		canvasesContainer.addEventListener('panzoomchange', (event: any) => {
+			currentZoom = event.detail.scale;
+		});
+		setTimeout(() => panzoom.zoom(0, 100));
+		panzoom.zoom(5, { animate: true });
 	});
 	const drawerStore = getDrawerStore();
 
-	// let panzoom: any;
+	let panzoom: any;
 	let currentZoom = 1;
 
-	// function handlePanzoomSettingsChange(enablePan: boolean, anythingEssentialLoading: boolean) {
-	// 	if (panzoom) {
-	// 		panzoom.setOptions({
-	// 			disablePan: !enablePan,
-	// 			disableZoom: anythingEssentialLoading
-	// 		});
-	// 	}
-	// }
+	function handlePanzoomSettingsChange(enablePan: boolean, anythingEssentialLoading: boolean) {
+		if (panzoom) {
+			panzoom.setOptions({
+				disablePan: !enablePan,
+				disableZoom: anythingEssentialLoading
+			});
+		}
+	}
 
-	// $: handlePanzoomSettingsChange(enablePan, anythingEssentialLoading);
+	$: handlePanzoomSettingsChange(enablePan, anythingEssentialLoading);
 </script>
 
 <Drawer>
@@ -1057,7 +1054,6 @@
 			</svelte:fragment>
 		</AppBar>
 	</svelte:fragment>
-	<!-- class="max-w-80 h-full shadow-md" -->
 	<svelte:fragment slot="sidebarLeft">
 		<TabGroup>
 			<Tab
@@ -1124,11 +1120,12 @@
 			</div>
 		</TabGroup>
 	</svelte:fragment>
-	<div class="
+	<div
+		class="
 	flex flex-col gap-y-4
-	2xl:px-64 xl:px-16 md:px-8 px-2 py-4 
+	2xl:px-64 xl:px-16 md:px-8 px-2 py-4
 	"
-	style="max-height: calc(100vh - {headerHeightPx}px)"
+		style="max-height: calc(100vh - {headerHeightPx}px)"
 	>
 		<!-- top buttons panel -->
 		<div class="flex flex-1 justify-between">
@@ -1185,7 +1182,7 @@
 			</div>
 		</div>
 		<!-- editor canvases-->
-		<div 
+		<div
 			id="mainEditorContainer"
 			class="flex-auto overflow-hidden"
 			style="cursor: {anythingEssentialLoading ? 'not-allowed' : 'default'}"
@@ -1219,16 +1216,6 @@
 					: 'none'}
 				"
 			>
-				<!-- style="cursor: {anythingEssentialLoading
-				? 'not-allowed'
-				: (enablePan
-				? 'move'
-				: selectedTool === 'segment_anything'
-				? 'default'
-				: currentCursor === 'default'
-				? 'auto'
-				: 'none')}" -->
-
 				<div
 					class="relative !h-full !w-full"
 					on:mouseenter={!enablePan ? showBrushCursor : undefined}
@@ -1257,18 +1244,17 @@
 					</div>
 					<!-- default width so the page isnt empty till load -->
 					<canvas
-						class="shadow-lg 
+						class="shadow-lg
 						{anythingEssentialLoading ? 'opacity-30 cursor-not-allowed' : ''} "
 						id="imageCanvas"
 						bind:this={imageCanvas}
-						/>
-						
-						<!-- {imageCanvas && imageCanvas.width > imageCanvas.height ? "!w-full" : "!w-auto  !h-64"}" -->
+					/>
 
-
-						<!-- class="{imageCanvas &&  imageCanvas.width > imageCanvas.height ? "!w-full" : "!w-auto !h-64"}" -->
 					<canvas
 						id="maskCanvas"
+						class="
+						{enablePan ? '' : 'panzoom-exclude'} 
+						{anythingEssentialLoading ? 'opacity-30 cursor-not-allowed' : ''}"
 						bind:this={maskCanvas}
 						on:mousedown={selectedTool === 'brush' && !enablePan
 							? (e) => startPaintingMouse(e, maskCanvas)
@@ -1278,32 +1264,31 @@
 							selectedTool === 'brush' && !enablePan
 								? handleEditorMouseMove(event, maskCanvas)
 								: undefined}
-						on:touchstart={selectedTool === 'brush' 
-						// && !enablePan
-							? (e) => {
-								console.log("start")
-								console.log(e)
+						on:touchstart={selectedTool === 'brush'
+							? // && !enablePan
+							  (e) => {
+									console.log('start');
+									console.log(e);
 									if (e.touches.length === 1) {
 										startPaintingTouch(e, maskCanvas);
-									}
-									else{
+									} else {
 										stopPainting();
 									}
 							  }
 							: undefined}
-						on:touchend={selectedTool === 'brush' 
-						// &&  !enablePan
-							? (e) => {
-								console.log("end")
-									console.log(e)
+						on:touchend={selectedTool === 'brush'
+							? // &&  !enablePan
+							  (e) => {
+									console.log('end');
+									console.log(e);
 									stopPainting();
 							  }
 							: undefined}
-						on:touchmove={selectedTool === 'brush' 
-						// &&  !enablePan
-							? (e) => {
-								console.log("move")
-								console.log(e)
+						on:touchmove={selectedTool === 'brush'
+							? // &&  !enablePan
+							  (e) => {
+									console.log('move');
+									console.log(e);
 									if (e.touches.length === 1) {
 										e.preventDefault();
 										handleEditorTouchMove(e, maskCanvas);
@@ -1317,13 +1302,9 @@
 							  }
 							: undefined}
 					/>
-					<!-- {enablePan ? '' : 'panzoom-exclude'} {anythingEssentialLoading
-							? 'opacity-30 cursor-not-allowed'
-							: ''} -->
 
-							<!-- {imageCanvas && imageCanvas.width > imageCanvas.height ? "!w-full" : "!w-auto  !h-64"} -->
 					<img
-						class="shadow-lg 
+						class="shadow-lg
 						{anythingEssentialLoading ? 'opacity-50 cursor-not-allowed' : ''}
 						"
 						src={$uploadedImgBase64}
@@ -1334,7 +1315,7 @@
 			</div>
 		</div>
 		<!-- bottom buttons -->
-		<div class="flex flex-1 flex-wrap lg:gap-x-2 gap-x-1 ">
+		<div class="flex flex-1 flex-wrap lg:gap-x-2 gap-x-1">
 			<div class="sm:flex-1 flex-0" />
 			<div
 				class="btn-group variant-filled {anythingEssentialLoading
@@ -1371,10 +1352,7 @@
 				>
 					<div class="flex items-center justify-center gap-x-2">
 						<button
-							on:click={(e) => 
-							// panzoom.zoomOut()
-							console.log("zoomout")
-							}
+							on:click={(e) => panzoom.zoomOut()}
 							class="{anythingEssentialLoading
 								? 'cursor-not-allowed'
 								: 'cursor-pointer'} btn btn-sm !p-0 lg:!px-4 lg:!py-2"
@@ -1387,10 +1365,7 @@
 							>{Math.round(currentZoom * 100)} %</span
 						>
 						<button
-							on:click={(e) => 
-							// panzoom.zoomIn()
-							console.log("zoomin")
-							}
+							on:click={(e) => panzoom.zoomIn()}
 							class="{anythingEssentialLoading
 								? 'cursor-not-allowed'
 								: 'cursor-pointer'} btn btn-sm variant-filled !p-0 lg:!px-4 lg:!py-2"
@@ -1401,10 +1376,7 @@
 				</button>
 				<button
 					disabled={anythingEssentialLoading}
-					on:click={() => 
-					// panzoom.reset()
-				console.log('resety')	
-					}
+					on:click={() => panzoom.reset()}
 					class="!px-2 !pr-3 lg:!px-4 lg:!pr-5"
 				>
 					<ScanEyeIcon />
@@ -1412,11 +1384,11 @@
 			</div>
 			<div class="flex-1 flex justify-end">
 				<button
-					class="btn lg:btn-xl md:btn-md btn-sm variant-filled-primary text-white dark:text-white font-semibold "
+					class="btn lg:btn-xl md:btn-md btn-sm variant-filled-primary text-white dark:text-white font-semibold"
 					disabled={anythingEssentialLoading || inpainterLoading}
 					on:click={async () => handleInpainting()}
 				>
-					<span class="flex gap-x-2 items-center ">
+					<span class="flex gap-x-2 items-center">
 						{#if inpainterLoading && !anythingEssentialLoading}
 							<ProgressRadial
 								width="w-6"
