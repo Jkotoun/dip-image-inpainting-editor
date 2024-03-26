@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
-	import {base} from '$app/paths';
+	import { base } from '$app/paths';
 	import { uploadedImgBase64, uploadedImgFileName } from '../../stores/imgStore';
 	import { mainWorker } from '../../stores/workerStore';
 	import { MESSAGE_TYPES } from '../../workers/messageTypes';
@@ -183,8 +183,6 @@
 		}
 	}
 
-	
-
 	//EMBEDDING FUNCTIONS
 	async function getResizedImgRGBArray(
 		img: ImageData,
@@ -244,11 +242,11 @@
 					imageCanvas.style.width =
 						maskCanvas.style.width =
 						originalImgElement.style.width =
-							'auto';
-					imageCanvas.style.height =
-						maskCanvas.style.height =
-						originalImgElement.style.height =
-							'75vh';
+							'100%';
+					// imageCanvas.style.maxHeight =
+					// 	maskCanvas.style.maxHeight =
+					// 	originalImgElement.style.maxHeight =
+					// 		'75vh';
 				} else {
 					imageCanvas.style.width =
 						maskCanvas.style.width =
@@ -450,7 +448,7 @@
 
 	function reset() {
 		//clear all states
-		panzoom.reset();
+		// panzoom.reset();
 		currentEditorState = {
 			maskBrush: new Array(imgDataOriginal.height)
 				.fill(false)
@@ -473,11 +471,25 @@
 	}
 
 	// brush tool
-	function startPainting(event: MouseEvent) {
+	function startPaintingMouse(event: MouseEvent, canvas: HTMLCanvasElement) {
 		isPainting = true;
 		prevMouseX = event.offsetX * ImgResToCanvasSizeRatio;
 		prevMouseY = event.offsetY * ImgResToCanvasSizeRatio;
-		handleEditorMouseMove(event, maskCanvas);
+		handleEditorMouseMove(event, canvas);
+	}
+	function startPaintingTouch(event: TouchEvent, canvas: HTMLCanvasElement) {
+		isPainting = true;
+
+		let touch = event.touches[0]; // Get the first touch, you might handle multi-touch differently
+		let targetRect = canvas.getBoundingClientRect(); // Get the target element's position
+
+		// Calculate offsetX and offsetY
+		let offsetX = touch.clientX - targetRect.left;
+		let offsetY = touch.clientY - targetRect.top;
+
+		prevMouseX = offsetX * ImgResToCanvasSizeRatio;
+		prevMouseY = offsetY * ImgResToCanvasSizeRatio;
+		// handleEditorTouchMove(event, canvas);
 	}
 
 	function stopPainting() {
@@ -496,6 +508,7 @@
 		editorStatesUndoed = [];
 	}
 	function handleEditorMouseMove(event: MouseEvent, canvas: HTMLCanvasElement) {
+		console.log(event);
 		const x = event.offsetX * ImgResToCanvasSizeRatio;
 		const y = event.offsetY * ImgResToCanvasSizeRatio;
 
@@ -503,6 +516,26 @@
 		currentCanvasRelativeY = event.offsetY;
 		if (isPainting) {
 			paintOnCanvas(x, y, brushSize, canvas);
+		}
+	}
+
+	function handleEditorTouchMove(event: TouchEvent, canvas: HTMLCanvasElement) {
+		let touch = event.touches[0]; // Get the first touch, you might handle multi-touch differently
+		let targetRect = canvas.getBoundingClientRect(); // Get the target element's position
+
+		// Calculate offsetX and offsetY
+		let offsetX = touch.clientX - targetRect.left;
+		let offsetY = touch.clientY - targetRect.top;
+		currentCanvasRelativeX = offsetX;
+		currentCanvasRelativeY = offsetY;
+
+		if (isPainting) {
+			paintOnCanvas(
+				offsetX * ImgResToCanvasSizeRatio,
+				offsetY * ImgResToCanvasSizeRatio,
+				brushSize,
+				canvas
+			);
 		}
 	}
 
@@ -898,35 +931,34 @@
 			(then, the message is sent automatically after loading)*/
 			$mainWorker.postMessage({ type: MESSAGE_TYPES.CHECK_MODELS_LOADING_STATE });
 		}
-		panzoom = Panzoom(canvasesContainer, {
-			disablePan: !enablePan,
-			minScale: 1,
-			maxScale: 10,
-			disableZoom: anythingEssentialLoading
-		}) as PanzoomObject;
-		canvasesContainer.parentElement!.addEventListener('wheel', panzoom.zoomWithWheel);
-		canvasesContainer.addEventListener('panzoomchange', (event: any) => {
-			currentZoom = event.detail.scale;
-		});
-		setTimeout(() => panzoom.zoom(0, 100));
+		// panzoom = Panzoom(canvasesContainer, {
+		// 	disablePan: !enablePan,
+		// 	minScale: 1,
+		// 	maxScale: 10,
+		// 	disableZoom: anythingEssentialLoading
+		// }) as PanzoomObject;
+		// canvasesContainer.parentElement!.addEventListener('wheel', panzoom.zoomWithWheel);
+		// canvasesContainer.addEventListener('panzoomchange', (event: any) => {
+		// 	currentZoom = event.detail.scale;
+		// });
+		// setTimeout(() => panzoom.zoom(0, 100));
 		// panzoom.zoom(5, { animate: true });
 	});
 	const drawerStore = getDrawerStore();
 
-	let panzoom: any;
+	// let panzoom: any;
 	let currentZoom = 1;
 
-	function handlePanzoomSettingsChange(enablePan: boolean, anythingEssentialLoading: boolean) {
-		if (panzoom) {
-			panzoom.setOptions({
-				disablePan: !enablePan,
-				disableZoom: anythingEssentialLoading
-			});
-		}
-	}
+	// function handlePanzoomSettingsChange(enablePan: boolean, anythingEssentialLoading: boolean) {
+	// 	if (panzoom) {
+	// 		panzoom.setOptions({
+	// 			disablePan: !enablePan,
+	// 			disableZoom: anythingEssentialLoading
+	// 		});
+	// 	}
+	// }
 
-	$: handlePanzoomSettingsChange(enablePan, anythingEssentialLoading);
-
+	// $: handlePanzoomSettingsChange(enablePan, anythingEssentialLoading);
 </script>
 
 <Drawer>
@@ -996,7 +1028,7 @@
 	</TabGroup>
 </Drawer>
 
-<AppShell slotSidebarLeft="overflow-visible lg:w-80 w-0 h-full shadow-md">
+<AppShell slotSidebarLeft="overflow-visible lg:w-80 w-0 h-screen shadow-md z-50">
 	<svelte:fragment slot="header">
 		<AppBar>
 			<svelte:fragment slot="lead">
@@ -1009,7 +1041,8 @@
 						</svg>
 					</span>
 				</button>
-				<a href={base == '' ? '/' : base} class="font-bold">Smart Object remover</a>
+				<a href={base == '' ? '/' : base} class="font-bold lg:inline hidden">Smart Object remover</a
+				>
 			</svelte:fragment>
 			<svelte:fragment slot="trail">
 				<a href={base == '' ? '/' : base} class="font-semibold">Home</a>
@@ -1085,7 +1118,7 @@
 			</div>
 		</TabGroup>
 	</svelte:fragment>
-	<div class="2xl:px-64 xl:px-16 md:px-8 px-3 py-4">
+	<div class="2xl:px-64 xl:px-16 md:px-8 px-2 py-4 ">
 		<!-- top buttons panel -->
 		<div class="flex pb-4 justify-between">
 			<!-- left buttons -->
@@ -1141,12 +1174,12 @@
 			</div>
 		</div>
 		<!-- editor canvases-->
-		<div
+		<div 
 			id="mainEditorContainer"
 			style="cursor: {anythingEssentialLoading ? 'not-allowed' : 'default'}"
 		>
 			<div
-				class="absolute w-full h-full flex items-center flex-col gap-y-2 justify-center z-50 {!anythingEssentialLoading
+				class="absolute w-full h-full flex items-center flex-col gap-y-2 justify-center z-10 {!anythingEssentialLoading
 					? 'hidden'
 					: ''}"
 			>
@@ -1163,7 +1196,7 @@
 			</div>
 			<div
 				class="canvases"
-				on:resize={() => console.log("resized")}
+				on:resize={() => console.log('resized')}
 				bind:this={canvasesContainer}
 				style="cursor: {enablePan
 					? 'move'
@@ -1218,20 +1251,61 @@
 					/>
 					<canvas
 						id="maskCanvas"
-						class="{enablePan ? '' : 'panzoom-exclude'} {anythingEssentialLoading
-							? 'opacity-30 cursor-not-allowed'
-							: ''}"
+						class="
+							
+							"
 						bind:this={maskCanvas}
-						on:mousedown={selectedTool === 'brush' && !enablePan ? startPainting : undefined}
+						on:mousedown={selectedTool === 'brush' && !enablePan
+							? (e) => startPaintingMouse(e, maskCanvas)
+							: undefined}
 						on:mouseup={selectedTool === 'brush' && !enablePan ? stopPainting : undefined}
 						on:mousemove={(event) =>
 							selectedTool === 'brush' && !enablePan
 								? handleEditorMouseMove(event, maskCanvas)
 								: undefined}
+						on:touchstart={selectedTool === 'brush' 
+						// && !enablePan
+							? (e) => {
+								console.log("start")
+								console.log(e)
+									if (e.touches.length === 1) {
+										startPaintingTouch(e, maskCanvas);
+									}
+									else{
+										stopPainting();
+									}
+							  }
+							: undefined}
+						on:touchend={selectedTool === 'brush' 
+						// &&  !enablePan
+							? (e) => {
+								console.log("end")
+									console.log(e)
+									stopPainting();
+							  }
+							: undefined}
+						on:touchmove={selectedTool === 'brush' 
+						// &&  !enablePan
+							? (e) => {
+								console.log("move")
+								console.log(e)
+									if (e.touches.length === 1) {
+										e.preventDefault();
+										handleEditorTouchMove(e, maskCanvas);
+									}
+							  }
+							: undefined}
 						on:click={selectedTool === 'segment_anything' && !enablePan
-							? async (e) => handleCanvasClick(e)
+							? async (e) => {
+									console.log(e);
+									handleCanvasClick(e);
+							  }
 							: undefined}
 					/>
+					<!-- {enablePan ? '' : 'panzoom-exclude'} {anythingEssentialLoading
+							? 'opacity-30 cursor-not-allowed'
+							: ''} -->
+
 					<img
 						class="shadow-lg {anythingEssentialLoading ? 'opacity-50 cursor-not-allowed' : ''}"
 						src={$uploadedImgBase64}
@@ -1242,7 +1316,7 @@
 			</div>
 		</div>
 		<!-- bottom buttons -->
-		<div class="flex gap-x-2 py-4">
+		<div class="flex flex-wrap lg:gap-x-2 gap-x-1 lg:py-4 py-2">
 			<div class="sm:flex-1 flex-0" />
 			<div
 				class="btn-group variant-filled {anythingEssentialLoading
@@ -1279,7 +1353,10 @@
 				>
 					<div class="flex items-center justify-center gap-x-2">
 						<button
-							on:click={(e) => panzoom.zoomOut()}
+							on:click={(e) => 
+							// panzoom.zoomOut()
+							console.log("zoomout")
+							}
 							class="{anythingEssentialLoading
 								? 'cursor-not-allowed'
 								: 'cursor-pointer'} btn btn-sm !p-0 lg:!px-4 lg:!py-2"
@@ -1292,7 +1369,10 @@
 							>{Math.round(currentZoom * 100)} %</span
 						>
 						<button
-							on:click={(e) => panzoom.zoomIn()}
+							on:click={(e) => 
+							// panzoom.zoomIn()
+							console.log("zoomin")
+							}
 							class="{anythingEssentialLoading
 								? 'cursor-not-allowed'
 								: 'cursor-pointer'} btn btn-sm variant-filled !p-0 lg:!px-4 lg:!py-2"
@@ -1303,7 +1383,10 @@
 				</button>
 				<button
 					disabled={anythingEssentialLoading}
-					on:click={() => panzoom.reset()}
+					on:click={() => 
+					// panzoom.reset()
+				console.log('resety')	
+					}
 					class="!px-2 !pr-3 lg:!px-4 lg:!pr-5"
 				>
 					<ScanEyeIcon />
@@ -1311,7 +1394,7 @@
 			</div>
 			<div class="flex-1 flex justify-end">
 				<button
-					class="btn lg:btn-xl btn-lg variant-filled-primary text-white dark:text-white font-semibold"
+					class="btn lg:btn-xl btn-sm variant-filled-primary text-white dark:text-white font-semibold"
 					disabled={anythingEssentialLoading || inpainterLoading}
 					on:click={async () => handleInpainting()}
 				>
