@@ -96,7 +96,7 @@
 	let editorStatesHistory: editorState[] = [];
 	//saved for potential redos after undo actions, emptied on new action after series of undos
 	let editorStatesUndoed: editorState[] = [];
-
+	let appbarElement: HTMLElement;
 	let currentCursor: 'default' | 'brush' | 'eraser' = 'default';
 	//brush tool
 	let brushSize = 10;
@@ -238,25 +238,25 @@
 				imageCanvas.height = img.height;
 				maskCanvas.height = img.height;
 
-				if (imageCanvas.width > imageCanvas.height) {
-					imageCanvas.style.width =
-						maskCanvas.style.width =
-						originalImgElement.style.width =
-							'100%';
-					// imageCanvas.style.maxHeight =
-					// 	maskCanvas.style.maxHeight =
-					// 	originalImgElement.style.maxHeight =
-					// 		'75vh';
-				} else {
-					imageCanvas.style.width =
-						maskCanvas.style.width =
-						originalImgElement.style.width =
-							'auto';
-					imageCanvas.style.height =
-						maskCanvas.style.height =
-						originalImgElement.style.height =
-							'75vh';
-				}
+				// if (imageCanvas.width > imageCanvas.height) {
+				// 	imageCanvas.style.width =
+				// 		maskCanvas.style.width =
+				// 		originalImgElement.style.width =
+				// 			'100%';
+				// 	// imageCanvas.style.maxHeight =
+				// 	// 	maskCanvas.style.maxHeight =
+				// 	// 	originalImgElement.style.maxHeight =
+				// 	// 		'75vh';
+				// } else {
+				// 	imageCanvas.style.width =
+				// 		maskCanvas.style.width =
+				// 		originalImgElement.style.width =
+				// 			'auto';
+				// 	imageCanvas.style.height =
+				// 		maskCanvas.style.height =
+				// 		originalImgElement.style.height =
+				// 			'75vh';
+				// }
 				const canvasElementSize = imageCanvas.getBoundingClientRect();
 				// canvasesContainer.style.height = `${canvasElementSize.height}px`;
 				ImgResToCanvasSizeRatio = img.width / canvasElementSize.width;
@@ -414,7 +414,6 @@
 	function drawImage(canvas: HTMLCanvasElement, imageData: ImageData) {
 		canvas.getContext('2d')!.putImageData(imageData, 0, 0);
 	}
-
 	function drawMarkers(canvas: HTMLCanvasElement, clickedPositions: SAMmarker[]) {
 		const canvasContext = canvas.getContext('2d');
 		if (!canvasContext) return;
@@ -726,6 +725,8 @@
 		}
 	}
 
+	
+
 	async function renderEditorState(
 		state: editorState,
 		imageCanvas: HTMLCanvasElement,
@@ -905,8 +906,13 @@
 
 		return dilatedMask;
 	}
-
+	let headerHeightPx = 0;
 	onMount(async () => {
+
+		let header = document.querySelector('header');
+		if(header){
+			headerHeightPx = header.getBoundingClientRect().height;
+		}
 		if ($uploadedImgBase64 === null || $uploadedImgFileName === '') {
 			goto(base == '' ? '/' : base);
 		}
@@ -1030,7 +1036,7 @@
 
 <AppShell slotSidebarLeft="overflow-visible lg:w-80 w-0 h-screen shadow-md z-50">
 	<svelte:fragment slot="header">
-		<AppBar>
+		<AppBar id="appbar">
 			<svelte:fragment slot="lead">
 				<button class="lg:hidden btn btn-sm mr-4" on:click={() => drawerStore.open({})}>
 					<span>
@@ -1118,9 +1124,14 @@
 			</div>
 		</TabGroup>
 	</svelte:fragment>
-	<div class="2xl:px-64 xl:px-16 md:px-8 px-2 py-4 ">
+	<div class="
+	flex flex-col gap-y-4
+	2xl:px-64 xl:px-16 md:px-8 px-2 py-4 
+	"
+	style="max-height: calc(100vh - {headerHeightPx}px)"
+	>
 		<!-- top buttons panel -->
-		<div class="flex pb-4 justify-between">
+		<div class="flex flex-1 justify-between">
 			<!-- left buttons -->
 			<div class="flex lg:gap-x-2 gap-x-1">
 				<button
@@ -1176,6 +1187,7 @@
 		<!-- editor canvases-->
 		<div 
 			id="mainEditorContainer"
+			class="flex-auto overflow-hidden"
 			style="cursor: {anythingEssentialLoading ? 'not-allowed' : 'default'}"
 		>
 			<div
@@ -1218,7 +1230,7 @@
 				: 'none')}" -->
 
 				<div
-					class="relative w-full"
+					class="relative !h-full !w-full"
 					on:mouseenter={!enablePan ? showBrushCursor : undefined}
 					on:mouseleave={!enablePan ? hideBrushCursor : undefined}
 					role="group"
@@ -1245,15 +1257,18 @@
 					</div>
 					<!-- default width so the page isnt empty till load -->
 					<canvas
-						class="shadow-lg {anythingEssentialLoading ? 'opacity-30 cursor-not-allowed' : ''}"
+						class="shadow-lg 
+						{anythingEssentialLoading ? 'opacity-30 cursor-not-allowed' : ''} "
 						id="imageCanvas"
 						bind:this={imageCanvas}
-					/>
+						/>
+						
+						<!-- {imageCanvas && imageCanvas.width > imageCanvas.height ? "!w-full" : "!w-auto  !h-64"}" -->
+
+
+						<!-- class="{imageCanvas &&  imageCanvas.width > imageCanvas.height ? "!w-full" : "!w-auto !h-64"}" -->
 					<canvas
 						id="maskCanvas"
-						class="
-							
-							"
 						bind:this={maskCanvas}
 						on:mousedown={selectedTool === 'brush' && !enablePan
 							? (e) => startPaintingMouse(e, maskCanvas)
@@ -1306,8 +1321,11 @@
 							? 'opacity-30 cursor-not-allowed'
 							: ''} -->
 
+							<!-- {imageCanvas && imageCanvas.width > imageCanvas.height ? "!w-full" : "!w-auto  !h-64"} -->
 					<img
-						class="shadow-lg {anythingEssentialLoading ? 'opacity-50 cursor-not-allowed' : ''}"
+						class="shadow-lg 
+						{anythingEssentialLoading ? 'opacity-50 cursor-not-allowed' : ''}
+						"
 						src={$uploadedImgBase64}
 						alt="originalImage"
 						bind:this={originalImgElement}
@@ -1316,7 +1334,7 @@
 			</div>
 		</div>
 		<!-- bottom buttons -->
-		<div class="flex flex-wrap lg:gap-x-2 gap-x-1 lg:py-4 py-2">
+		<div class="flex flex-1 flex-wrap lg:gap-x-2 gap-x-1 ">
 			<div class="sm:flex-1 flex-0" />
 			<div
 				class="btn-group variant-filled {anythingEssentialLoading
@@ -1394,11 +1412,11 @@
 			</div>
 			<div class="flex-1 flex justify-end">
 				<button
-					class="btn lg:btn-xl btn-sm variant-filled-primary text-white dark:text-white font-semibold"
+					class="btn lg:btn-xl md:btn-md btn-sm variant-filled-primary text-white dark:text-white font-semibold "
 					disabled={anythingEssentialLoading || inpainterLoading}
 					on:click={async () => handleInpainting()}
 				>
-					<span class="flex gap-x-2 items-center">
+					<span class="flex gap-x-2 items-center ">
 						{#if inpainterLoading && !anythingEssentialLoading}
 							<ProgressRadial
 								width="w-6"
@@ -1426,9 +1444,10 @@
 	.canvases canvas,
 	.canvases img {
 		inset: 0;
+		display: block;
 		width: 100%;
 		height: 100%;
-		display: block;
+		object-fit: contain;
 	}
 
 	.canvases #maskCanvas {
