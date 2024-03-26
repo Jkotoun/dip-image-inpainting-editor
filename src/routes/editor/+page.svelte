@@ -1152,15 +1152,26 @@
 
 			<!-- right buttons -->
 			<div class="flex lg:gap-x-2 gap-x-1">
+				
 				<button
 					disabled={anythingEssentialLoading}
-					class="btn btn-sm lg:btn-md variant-filled"
+					class="btn btn-sm lg:btn-md variant-filled select-none"
 					on:mousedown={() => {
 						maskCanvas.style.display = 'none';
 						imageCanvas.style.display = 'none';
 						originalImgElement.style.display = 'block';
 					}}
+					on:touchstart={() => {
+						maskCanvas.style.display = 'none';
+						imageCanvas.style.display = 'none';
+						originalImgElement.style.display = 'block';
+					}}
 					on:mouseup={() => {
+						maskCanvas.style.display = 'block';
+						imageCanvas.style.display = 'block';
+						originalImgElement.style.display = 'none';
+					}}
+					on:touchend={() => {
 						maskCanvas.style.display = 'block';
 						imageCanvas.style.display = 'block';
 						originalImgElement.style.display = 'none';
