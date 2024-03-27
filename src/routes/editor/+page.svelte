@@ -744,7 +744,7 @@
 	flex flex-col gap-y-4
 	2xl:px-64 xl:px-16 md:px-8 px-2 py-4
 	"
-		style="height: calc(100vh - {headerHeightPx}px)"
+		style="max-height: calc(100vh - {headerHeightPx}px)"
 	>
 		<!-- top buttons panel -->
 		<div class="flex flex-none justify-between">
@@ -872,7 +872,7 @@
 					</div>
 					<div class="flex-none"></div>
 					<!-- default width so the page isnt empty till load -->
-					<div class="relative flex-none h-full">
+					<div class="relative flex-none  shrink">
 					<canvas
 						class="shadow-lg
 						{anythingEssentialLoading ? 'opacity-30 cursor-not-allowed' : ''} "
