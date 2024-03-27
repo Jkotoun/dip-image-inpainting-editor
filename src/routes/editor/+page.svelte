@@ -1,6 +1,21 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import { base } from '$app/paths';
+	// import type { SAMmarker, editorState } from '$lib/editorHelpers';
+	import {
+		getResizedImgData,
+		imgDataToRGBArray,
+		reshapeBufferToNCHW,
+		booleanMaskToUint8Buffer,
+		reshapeCHWtoHWC
+	} from '$lib/onnxHelpers';
+	import {
+		dilateMaskByPixels,
+		maskArrayFromImgData,
+		downloadImage,
+		drawMask,
+		clearCanvas
+	} from '$lib/editorHelpers';
 	import { uploadedImgBase64, uploadedImgFileName } from '../../stores/imgStore';
 	import { mainWorker } from '../../stores/workerStore';
 	import { MESSAGE_TYPES } from '../../workers/messageTypes';
@@ -36,15 +51,30 @@
 
 	let uploadedImage: string | null = null;
 
+	interface SAMmarker {
+		x: number;
+		y: number;
+		type: 'positive' | 'negative';
+	}
+
+	interface editorState {
+		maskBrush: boolean[][];
+		maskSAM: boolean[][];
+		maskSAMDilated: boolean[][];
+		clickedPositions: SAMmarker[];
+		imgData: ImageData;
+		currentImgEmbedding:
+			| {
+					data: any;
+					dims: any;
+			  }
+			| undefined;
+	}
+	let headerHeightPx = 0;
+
 	//types definition
-	type pointType = 'positive' | 'negative';
 
 	//interface interaction globals
-	interface loadedImgRGBData {
-		rgbArray: Uint8Array;
-		width: number;
-		height: number;
-	}
 
 	let encoderLoading = true;
 	let decoderLoading = true;
@@ -69,34 +99,14 @@
 	let originalImgElement: HTMLImageElement;
 	let pixelsDilatation = 10;
 
-	//OLD STATE MANAGEMENT
-	interface SAMmarker {
-		x: number;
-		y: number;
-		type: pointType;
-	}
-
 	//editor state management
-	interface editorState {
-		maskBrush: boolean[][];
-		maskSAM: boolean[][];
-		maskSAMDilated: boolean[][];
-		clickedPositions: SAMmarker[];
-		imgData: ImageData;
-		currentImgEmbedding:
-			| {
-					data: any;
-					dims: any;
-			  }
-			| undefined;
-	}
+
 	let imgDataOriginal: ImageData;
 	let imgName: string = 'default';
 	let currentEditorState: editorState;
 	let editorStatesHistory: editorState[] = [];
 	//saved for potential redos after undo actions, emptied on new action after series of undos
 	let editorStatesUndoed: editorState[] = [];
-	let appbarElement: HTMLElement;
 	let currentCursor: 'default' | 'brush' | 'eraser' = 'default';
 	//brush tool
 	let brushSize = 10;
@@ -108,7 +118,8 @@
 	let selectedBrushMode: 'brush' | 'eraser' = 'brush'; // Initial selected option
 	let selectedTool: 'brush' | 'segment_anything' = 'segment_anything';
 	let selectedSAMMode: 'positive' | 'negative' = 'positive';
-	$: changeDilatation(pixelsDilatation);
+
+	$: changeDilatation(pixelsDilatation, currentEditorState);
 
 	function handleWorkerModelsMessages(event: MessageEvent<any>) {
 		const { data, type } = event.data;
@@ -173,7 +184,8 @@
 	if ($mainWorker) {
 		$mainWorker.onmessage = handleWorkerModelsMessages;
 	}
-	async function changeDilatation(pixelsDilatation: number) {
+
+	async function changeDilatation(pixelsDilatation: number, currentEditorState: editorState) {
 		if (currentEditorState) {
 			currentEditorState.maskSAMDilated = await dilateMaskByPixels(
 				pixelsDilatation,
@@ -183,83 +195,21 @@
 		}
 	}
 
-	//EMBEDDING FUNCTIONS
-	async function getResizedImgRGBArray(
-		img: ImageData,
-		longSideLength: number = 1024
-	): Promise<loadedImgRGBData> {
-		//longerside
-		let imgBitmap: ImageBitmap = await createImageBitmap(img);
-		let newWidth, newHeight;
-		if (img.width > img.height) {
-			newWidth = longSideLength;
-			newHeight = Math.round(longSideLength * (img.height / img.width));
-		} else {
-			newHeight = longSideLength;
-			newWidth = Math.round(longSideLength * (img.width / img.height));
-		}
-
-		let tempCanvas = document.createElement('canvas');
-		tempCanvas.width = newWidth;
-		tempCanvas.height = newHeight;
-		let tempContext = tempCanvas.getContext('2d');
-		tempContext?.drawImage(imgBitmap, 0, 0, newWidth, newHeight);
-		resizedImgWidth = newWidth;
-		resizedImgHeight = newHeight;
-		let tmpCanvasData = getImageData(tempCanvas);
-		return imgDataToRGBArray(tmpCanvasData);
-	}
-
-	function imgDataToRGBArray(imgData: ImageData): loadedImgRGBData {
-		// let canvasContext = canvas.getContext('2d');
-		// let imgData = canvasContext?.getImageData(0, 0, canvas.width, canvas.height);
-		let pixels = imgData?.data;
-		//create rgb array
-		let rgbArray = new Uint8Array(imgData.width * imgData.height * 3);
-		for (let i = 0; i < imgData.width * imgData.height; i++) {
-			rgbArray[i * 3] = pixels![i * 4];
-			rgbArray[i * 3 + 1] = pixels![i * 4 + 1];
-			rgbArray[i * 3 + 2] = pixels![i * 4 + 2];
-		}
-		return { rgbArray, width: imgData.width, height: imgData.height } as loadedImgRGBData;
-	}
-
 	const setupEditor = async (sourceImgBase64Data: string, sourceImgName: string) => {
 		return new Promise<void>((resolve, reject) => {
 			const img = new Image();
 			img.src = sourceImgBase64Data;
 			imgName = sourceImgName;
 			img.onload = async () => {
-				//setup canvases
-
 				// Calculate aspect ratio
 				imageCanvas.width = img.width;
 				maskCanvas.width = img.width;
 				imageCanvas.height = img.height;
 				maskCanvas.height = img.height;
 
-				// if (imageCanvas.width > imageCanvas.height) {
-				// 	imageCanvas.style.width =
-				// 		maskCanvas.style.width =
-				// 		originalImgElement.style.width =
-				// 			'100%';
-				// 	// imageCanvas.style.maxHeight =
-				// 	// 	maskCanvas.style.maxHeight =
-				// 	// 	originalImgElement.style.maxHeight =
-				// 	// 		'75vh';
-				// } else {
-				// 	imageCanvas.style.width =
-				// 		maskCanvas.style.width =
-				// 		originalImgElement.style.width =
-				// 			'auto';
-				// 	imageCanvas.style.height =
-				// 		maskCanvas.style.height =
-				// 		originalImgElement.style.height =
-				// 			'75vh';
-				// }
 				const canvasElementSize = imageCanvas.getBoundingClientRect();
-				// canvasesContainer.style.height = `${canvasElementSize.height}px`;
 				ImgResToCanvasSizeRatio = img.width / canvasElementSize.width;
+
 				//render image
 				const ctx = imageCanvas.getContext('2d');
 				clearCanvas(imageCanvas);
@@ -280,33 +230,33 @@
 				editorStatesHistory = [];
 				editorStatesUndoed = [];
 				currentEditorState = {
-					maskBrush: new Array(imgDataOriginal.height)
-						.fill(false)
-						.map(() => new Array(imgDataOriginal.width).fill(false)),
-					maskSAM: new Array(imgDataOriginal.height)
-						.fill(false)
-						.map(() => new Array(imgDataOriginal.width).fill(false)),
-					maskSAMDilated: new Array(imgDataOriginal.height)
-						.fill(false)
-						.map(() => new Array(imgDataOriginal.width).fill(false)),
+					maskBrush: createEmptyMaskArray(imgDataOriginal.width, imgDataOriginal.height),
+					maskSAM: createEmptyMaskArray(imgDataOriginal.width, imgDataOriginal.height),
+					maskSAMDilated: createEmptyMaskArray(imgDataOriginal.width, imgDataOriginal.height),
 					clickedPositions: new Array<SAMmarker>(),
 					imgData: imgDataOriginal,
 					currentImgEmbedding: undefined
 				} as editorState;
 				resolve();
-
-				//0s timeout to handle UI loading state
 			};
 
 			img.onerror = (error) => {
-				// Reject the Promise if there's an error loading the image
 				reject(error);
 			};
 		});
 	};
+	function createEmptyMaskArray(width: number, height: number) {
+		return new Array(height).fill(false).map(() => new Array(width).fill(false));
+	}
 
 	async function runModelEncoder(imageData: ImageData): Promise<void> {
-		let resizedImgRGBData = await getResizedImgRGBArray(imageData, longSideLength);
+		// let resizedImgRGBData: loadedImgRGBData;
+		const { resizedImgRGBData, newWidth, newHeight } = await getResizedImgData(
+			imageData,
+			longSideLength
+		);
+		resizedImgWidth = newWidth;
+		resizedImgHeight = newHeight;
 		let floatArray = Float32Array.from(resizedImgRGBData.rgbArray);
 		$mainWorker?.postMessage({
 			type: MESSAGE_TYPES.ENCODER_RUN,
@@ -317,9 +267,8 @@
 		});
 	}
 
-	//DECODER MODEL FUNCTIONS
-
-	async function createInputDict(currentEditorState: editorState) {
+	//move to local module
+	async function createDecoderInputDict(currentEditorState: editorState) {
 		let inputPoint: Array<{ x: number; y: number }> = currentEditorState.clickedPositions.map(
 			({ x, y }) => coordsToResizedImgScale(x, y)
 		);
@@ -369,14 +318,12 @@
 			return;
 		}
 		decoderRunning = true;
-		const modelInput = await createInputDict(currentEditorState);
+		const modelInput = await createDecoderInputDict(currentEditorState);
 		$mainWorker?.postMessage({
 			type: MESSAGE_TYPES.DECODER_RUN,
 			data: modelInput
 		});
 	}
-
-	//EDITOR HANDLING FUNCTIONS
 
 	function coordsToResizedImgScale(x: number, y: number) {
 		const imageX = (x / imageCanvas.width) * resizedImgWidth;
@@ -414,6 +361,8 @@
 	function drawImage(canvas: HTMLCanvasElement, imageData: ImageData) {
 		canvas.getContext('2d')!.putImageData(imageData, 0, 0);
 	}
+
+	//move to local module
 	function drawMarkers(canvas: HTMLCanvasElement, clickedPositions: SAMmarker[]) {
 		const canvasContext = canvas.getContext('2d');
 		if (!canvasContext) return;
@@ -449,15 +398,9 @@
 		//clear all states
 		panzoom.reset();
 		currentEditorState = {
-			maskBrush: new Array(imgDataOriginal.height)
-				.fill(false)
-				.map(() => new Array(imgDataOriginal.width).fill(false)),
-			maskSAM: new Array(imgDataOriginal.height)
-				.fill(false)
-				.map(() => new Array(imgDataOriginal.width).fill(false)),
-			maskSAMDilated: new Array(imgDataOriginal.height)
-				.fill(false)
-				.map(() => new Array(imgDataOriginal.width).fill(false)),
+			maskBrush: createEmptyMaskArray(imgDataOriginal.width, imgDataOriginal.height),
+			maskSAM: createEmptyMaskArray(imgDataOriginal.width, imgDataOriginal.height),
+			maskSAMDilated: createEmptyMaskArray(imgDataOriginal.width, imgDataOriginal.height),
 			clickedPositions: [],
 			imgData: imgDataOriginal,
 			currentImgEmbedding: editorStatesHistory[0]
@@ -474,7 +417,7 @@
 		isPainting = true;
 		prevMouseX = event.offsetX * ImgResToCanvasSizeRatio;
 		prevMouseY = event.offsetY * ImgResToCanvasSizeRatio;
-		handleEditorMouseMove(event, canvas);
+		handleEditorCursorMove(event, canvas);
 	}
 	function startPaintingTouch(event: TouchEvent, canvas: HTMLCanvasElement) {
 		isPainting = true;
@@ -488,12 +431,21 @@
 
 		prevMouseX = offsetX * ImgResToCanvasSizeRatio;
 		prevMouseY = offsetY * ImgResToCanvasSizeRatio;
-		// handleEditorTouchMove(event, canvas);
 	}
 
 	function stopPainting() {
 		isPainting = false;
-		let maskArray: boolean[][] = createMaskArray(maskCanvas);
+		const ctx = maskCanvas.getContext('2d', { willReadFrequently: true });
+		if (!ctx) {
+			console.error('canvas context error');
+			return;
+		}
+		const imageData = ctx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
+		let maskArray: boolean[][] = maskArrayFromImgData(
+			imageData,
+			maskCanvas.width,
+			maskCanvas.height
+		);
 		//new state management
 		editorStatesHistory = [...editorStatesHistory, currentEditorState];
 		currentEditorState = {
@@ -506,35 +458,41 @@
 		} as editorState;
 		editorStatesUndoed = [];
 	}
-	function handleEditorMouseMove(event: MouseEvent, canvas: HTMLCanvasElement) {
-		console.log(event);
-		const x = event.offsetX * ImgResToCanvasSizeRatio;
-		const y = event.offsetY * ImgResToCanvasSizeRatio;
+	function handleEditorCursorMove(event: MouseEvent | TouchEvent, canvas: HTMLCanvasElement) {
+		let x: number, y: number;
+		if (event instanceof MouseEvent) {
+			x = event.offsetX * ImgResToCanvasSizeRatio;
+			y = event.offsetY * ImgResToCanvasSizeRatio;
+			currentCanvasRelativeX = event.offsetX;
+			currentCanvasRelativeY = event.offsetY;
+		} else {
+			let touch = event.touches[0]; // Get the first touch, you might handle multi-touch differently
+			let targetRect = canvas.getBoundingClientRect(); // Get the target element's position
 
-		currentCanvasRelativeX = event.offsetX;
-		currentCanvasRelativeY = event.offsetY;
-		if (isPainting) {
-			paintOnCanvas(x, y, brushSize, canvas);
+			// Calculate offsetX and offsetY
+			let offsetX = touch.clientX - targetRect.left;
+			let offsetY = touch.clientY - targetRect.top;
+			x = offsetX * ImgResToCanvasSizeRatio;
+			y = offsetY * ImgResToCanvasSizeRatio;
+			currentCanvasRelativeX = offsetX;
+			currentCanvasRelativeY = offsetY;
 		}
-	}
-
-	function handleEditorTouchMove(event: TouchEvent, canvas: HTMLCanvasElement) {
-		let touch = event.touches[0]; // Get the first touch, you might handle multi-touch differently
-		let targetRect = canvas.getBoundingClientRect(); // Get the target element's position
-
-		// Calculate offsetX and offsetY
-		let offsetX = touch.clientX - targetRect.left;
-		let offsetY = touch.clientY - targetRect.top;
-		currentCanvasRelativeX = offsetX;
-		currentCanvasRelativeY = offsetY;
-
 		if (isPainting) {
-			paintOnCanvas(
-				offsetX * ImgResToCanvasSizeRatio,
-				offsetY * ImgResToCanvasSizeRatio,
+			let canvasCtx = canvas.getContext('2d', { willReadFrequently: true });
+			if (!canvasCtx) {
+				console.error('canvas context error');
+				return;
+			}
+			const { currentX, currentY } = canvasBrushDraw(
+				x,
+				y,
+				prevMouseX,
+				prevMouseY,
 				brushSize,
-				canvas
+				canvasCtx
 			);
+			prevMouseX = currentX;
+			prevMouseY = currentY;
 		}
 	}
 
@@ -546,58 +504,41 @@
 		currentCursor = 'default';
 	}
 
-	function paintOnCanvas(x: number, y: number, brushSize: number, canvas: HTMLCanvasElement) {
-		// const yScaled = Math.abs(y) * ImgResToCanvasSizeRatio;
+	//move to local module
+	//returns the latest x,y position which was drawn on
+	function canvasBrushDraw(
+		x: number,
+		y: number,
+		prevX: number,
+		prevY: number,
+		brushSize: number,
+		canvasContext: CanvasRenderingContext2D
+	): { currentX: number; currentY: number } {
 		//scale to website pixels from canvas res
 		let brushSizeScaled = brushSize * ImgResToCanvasSizeRatio;
-		let ctx = canvas.getContext('2d', { willReadFrequently: true });
 		// Draw on canvas
-		if (ctx) {
-			if (prevMouseX === x && prevMouseY === y) {
-				ctx.beginPath();
-				ctx.arc(x, y, brushSizeScaled / 2, 0, 2 * Math.PI);
-				ctx.fillStyle = 'rgba(89, 156, 255, 1)';
-				ctx.fill();
-			} else {
-				ctx.strokeStyle = 'rgba(89, 156, 255, 1)';
-				ctx.beginPath();
-				ctx.lineJoin = 'round';
-				ctx.lineCap = 'round';
-				ctx.lineWidth = brushSizeScaled;
-				ctx.moveTo(prevMouseX, prevMouseY);
-				ctx.lineTo(x, y);
-				//color
-				ctx.closePath();
-				ctx.stroke();
-			}
-
-			prevMouseX = x;
-			prevMouseY = y;
+		if (prevX === x && prevY === y) {
+			canvasContext.beginPath();
+			canvasContext.arc(x, y, brushSizeScaled / 2, 0, 2 * Math.PI);
+			canvasContext.fillStyle = 'rgba(89, 156, 255, 1)';
+			canvasContext.fill();
+		} else {
+			canvasContext.strokeStyle = 'rgba(89, 156, 255, 1)';
+			canvasContext.beginPath();
+			canvasContext.lineJoin = 'round';
+			canvasContext.lineCap = 'round';
+			canvasContext.lineWidth = brushSizeScaled;
+			canvasContext.moveTo(prevX, prevY);
+			canvasContext.lineTo(x, y);
+			//color
+			canvasContext.closePath();
+			canvasContext.stroke();
 		}
+		return { currentX: x, currentY: y };
 	}
 
 	function getImageData(canvas: HTMLCanvasElement) {
 		return canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height);
-	}
-
-	function createMaskArray(maskCanvas: HTMLCanvasElement): boolean[][] {
-		const ctx = maskCanvas.getContext('2d', { willReadFrequently: true });
-		if (ctx) {
-			const imageData = ctx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
-
-			const maskArray: boolean[][] = [];
-			for (let y = 0; y < maskCanvas.height; y++) {
-				const row: boolean[] = [];
-				for (let x = 0; x < maskCanvas.width; x++) {
-					const index = (y * maskCanvas.width + x) * 4; //RGBA
-					const alpha = imageData.data[index + 3]; // Alpha value indicates if the pixel is drawn to
-					row.push(alpha > 128); //mark as masked pixels with alpha > 128 (minimizes aliasing better than >0)
-				}
-				maskArray.push(row);
-			}
-			return maskArray;
-		}
-		return [];
 	}
 
 	function handleBrushModeChange(event: any, maskCanvas: HTMLCanvasElement) {
@@ -610,64 +551,7 @@
 			selectedBrushMode === 'brush' ? 'source-over' : 'destination-out';
 	}
 
-	function reshapeBufferToNCHW(
-		rgbBuffer: Uint8Array,
-		batchSize = 1,
-		numChannels: number,
-		imageWidth: number,
-		imageHeight: number
-	) {
-		const nchwBuffer = new Uint8Array(batchSize * numChannels * imageWidth * imageHeight);
-		for (let i = 0; i < imageWidth * imageHeight; i++) {
-			for (let c = 0; c < numChannels; c++) {
-				for (let b = 0; b < batchSize; b++) {
-					const indexInNCHW =
-						b * numChannels * imageWidth * imageHeight + c * imageWidth * imageHeight + i;
-					const indexInRGB = i * numChannels + c;
-					nchwBuffer[indexInNCHW] = rgbBuffer[indexInRGB];
-				}
-			}
-		}
-		return nchwBuffer;
-	}
-
-	function booleanMaskToUint8Buffer(maskArray: boolean[][]) {
-		const height = maskArray.length;
-		const width = maskArray[0].length;
-
-		// Create a new Uint8Array to hold the converted buffer
-		const uint8Buffer = new Uint8Array(height * width);
-
-		for (let i = 0; i < height; i++) {
-			for (let j = 0; j < width; j++) {
-				// Convert boolean value to uint8 (0 or 1)
-				uint8Buffer[i * width + j] = maskArray[i][j] ? 0 : 255;
-			}
-		}
-
-		return uint8Buffer;
-	}
-
-	function reshapeCHWtoHWC(
-		chwBuffer: Uint8Array,
-		width: number,
-		height: number,
-		channels: number = 3
-	) {
-		const hwcBuffer = new Uint8Array(width * height * channels);
-		for (let c = 0; c < channels; c++) {
-			for (let h = 0; h < height; h++) {
-				for (let w = 0; w < width; w++) {
-					const chwIndex = c * height * width + h * width + w;
-					const hwcIndex = h * width * channels + w * channels + c;
-					hwcBuffer[hwcIndex] = chwBuffer[chwIndex];
-				}
-			}
-		}
-
-		return hwcBuffer;
-	}
-
+	//local module
 	async function RGB_CHW_array_to_imageData(
 		imageDataRGB: Uint8Array,
 		img_height: number,
@@ -682,7 +566,6 @@
 			imgDataBuffer[i * 4 + 2] = dataRGBBufferReshaped[i * 3 + 2];
 			imgDataBuffer[i * 4 + 3] = 255;
 		}
-
 		// Draw the ImageData onto the canvas
 		return new ImageData(imgDataBuffer, img_width, img_height);
 	}
@@ -738,51 +621,12 @@
 		drawMask(maskCanvas, state.maskBrush, 1, true);
 	}
 
-	function drawMask(
-		maskCanvas: HTMLCanvasElement,
-		maskArray: any,
-		opacity: number,
-		clearCanvasFirst = false
-	) {
-		const maskCanvasctx = maskCanvas.getContext('2d');
-		if (maskCanvasctx) {
-			if (clearCanvasFirst) {
-				clearCanvas(maskCanvas);
-			}
-			const prevMode = maskCanvasctx.globalCompositeOperation;
-			maskCanvasctx.globalCompositeOperation = 'source-over';
-			maskCanvasctx.fillStyle = `rgba(64, 141, 255, ${opacity})`;
-
-			for (let y = 0; y < maskArray.length; y++) {
-				for (let x = 0; x < maskArray[y].length; x++) {
-					if (maskArray[y][x]) {
-						maskCanvasctx.fillRect(x, y, 1, 1);
-					}
-				}
-			}
-			maskCanvasctx.globalCompositeOperation = prevMode;
-		}
-	}
-
-	function clearCanvas(canvas: HTMLCanvasElement) {
-		const ctx = canvas.getContext('2d');
-		if (ctx) {
-			ctx.clearRect(0, 0, canvas.width, canvas.height);
-		}
-	}
-
 	async function setInpaintedImgEditorState(inpaintedImgData: ImageData) {
 		editorStatesHistory = [...editorStatesHistory, currentEditorState];
 		let newEditorState: editorState = {
-			maskBrush: new Array(imageCanvas.height)
-				.fill(false)
-				.map(() => new Array(imageCanvas.width).fill(false)),
-			maskSAM: new Array(imageCanvas.height)
-				.fill(false)
-				.map(() => new Array(imageCanvas.width).fill(false)),
-			maskSAMDilated: new Array(imageCanvas.height)
-				.fill(false)
-				.map(() => new Array(imageCanvas.width).fill(false)),
+			maskBrush: createEmptyMaskArray(imgDataOriginal.width, imgDataOriginal.height),
+			maskSAM: createEmptyMaskArray(imgDataOriginal.width, imgDataOriginal.height),
+			maskSAMDilated: createEmptyMaskArray(imgDataOriginal.width, imgDataOriginal.height),
 			clickedPositions: [],
 			imgData: inpaintedImgData,
 			currentImgEmbedding: undefined
@@ -795,116 +639,9 @@
 		runModelEncoder(currentEditorState.imgData);
 	}
 
-	function downloadImage(imageData: ImageData) {
-		// Create a temporary canvas element
-		const tempCanvas = document.createElement('canvas');
-		tempCanvas.width = imageData.width;
-		tempCanvas.height = imageData.height;
-		const ctx = tempCanvas.getContext('2d');
 
-		// Draw the ImageData on the temporary canvas
-		ctx?.putImageData(imageData, 0, 0);
 
-		// Convert the temporary canvas to a Blob and download
-		tempCanvas.toBlob((blob) => {
-			const url = URL.createObjectURL(blob as Blob);
-			const a = document.createElement('a');
-			a.href = url;
-			a.download = `${imgName}_edited.png`; // Name of the file you want to download
-			document.body.appendChild(a);
-			a.click();
-			document.body.removeChild(a);
-			URL.revokeObjectURL(url);
-		}, 'image/png');
-	}
 
-	// function dilateMaskByPixels(pixels: number, mask: boolean[][]): boolean[][] {
-	//     let dilatedMask = mask.map(row => row.slice());
-	//     for (let p = 0; p < pixels; p++) {
-	//         let tempMask = dilatedMask.map(row => row.slice());
-	//         for (let i = 0; i < dilatedMask.length; i++) {
-	//             for (let j = 0; j < dilatedMask[i].length; j++) {
-	//                 if (dilatedMask[i][j]) {
-	//                     // Applying dilation (considering direct neighbors for simplicity)
-	//                     [[-1, 0], [1, 0], [0, -1], [0, 1]].forEach(([dx, dy]) => {
-	//                         let x = i + dx, y = j + dy;
-	//                         if (x >= 0 && x < dilatedMask.length && y >= 0 && y < dilatedMask[i].length) {
-	//                             tempMask[x][y] = true;
-	//                         }
-	//                     });
-	//                 }
-	//             }
-	//         }
-	//         dilatedMask = tempMask;
-	//     }
-	//     return dilatedMask;
-	// }
-	type Point = { x: number; y: number };
-
-	async function dilateMaskByPixels(
-		dilationPixels: number,
-		mask: boolean[][]
-	): Promise<boolean[][]> {
-		const numRows = mask.length;
-		const numCols = mask[0].length;
-		const directions = [
-			[-1, 0],
-			[1, 0],
-			[0, -1],
-			[0, 1]
-		]; // 4-way connectivity
-		let queue: Point[] = [];
-		let dilatedMask = mask.map((row) => row.slice());
-
-		// Initialize the queue with the edge pixels
-		for (let i = 0; i < numRows; i++) {
-			for (let j = 0; j < numCols; j++) {
-				if (mask[i][j]) {
-					directions.forEach(([dx, dy]) => {
-						const newX = i + dx;
-						const newY = j + dy;
-						if (
-							newX >= 0 &&
-							newX < numRows &&
-							newY >= 0 &&
-							newY < numCols &&
-							!dilatedMask[newX][newY]
-						) {
-							dilatedMask[newX][newY] = true;
-							queue.push({ x: newX, y: newY });
-						}
-					});
-				}
-			}
-		}
-
-		// Perform dilation for the specified number of pixels
-		for (let p = 0; p < dilationPixels - 1; p++) {
-			// -1 because we already did one dilation
-			let newQueue: Point[] = [];
-			while (queue.length > 0) {
-				const { x, y } = queue.shift()!;
-				directions.forEach(([dx, dy]) => {
-					const newX = x + dx;
-					const newY = y + dy;
-					if (
-						newX >= 0 &&
-						newX < numRows &&
-						newY >= 0 &&
-						newY < numCols &&
-						!dilatedMask[newX][newY]
-					) {
-						dilatedMask[newX][newY] = true;
-						newQueue.push({ x: newX, y: newY });
-					}
-				});
-			}
-			queue = newQueue;
-		}
-
-		return dilatedMask;
-	}
-	let headerHeightPx = 0;
 	onMount(async () => {
 		let header = document.querySelector('header');
 		if (header) {
@@ -1152,7 +889,6 @@
 
 			<!-- right buttons -->
 			<div class="flex lg:gap-x-2 gap-x-1">
-				
 				<button
 					disabled={anythingEssentialLoading}
 					class="btn btn-sm lg:btn-md variant-filled select-none"
@@ -1184,7 +920,7 @@
 				<button
 					disabled={anythingEssentialLoading}
 					class="btn btn-sm lg:btn-md variant-filled"
-					on:click={() => downloadImage(currentEditorState.imgData)}
+					on:click={() => downloadImage(currentEditorState.imgData, imgName)}
 				>
 					<span class="flex gap-x-2 items-center"
 						><HardDriveDownload class="lg:w-6 lg:h-6 w-4 h-4" /> Download
@@ -1193,7 +929,9 @@
 			</div>
 		</div>
 		<!-- editor canvases-->
-		<div id="mainEditorContainer" class="grow overflow-hidden"
+		<div
+			id="mainEditorContainer"
+			class="grow overflow-hidden"
 			style="cursor: {anythingEssentialLoading ? 'not-allowed' : 'default'}"
 		>
 			<div
@@ -1270,7 +1008,7 @@
 						on:mouseup={selectedTool === 'brush' && !enablePan ? stopPainting : undefined}
 						on:mousemove={(event) =>
 							selectedTool === 'brush' && !enablePan
-								? handleEditorMouseMove(event, maskCanvas)
+								? handleEditorCursorMove(event, maskCanvas)
 								: undefined}
 						on:touchstart={selectedTool === 'brush'
 							? // && !enablePan
@@ -1299,7 +1037,7 @@
 									console.log(e);
 									if (e.touches.length === 1) {
 										e.preventDefault();
-										handleEditorTouchMove(e, maskCanvas);
+										handleEditorCursorMove(e, maskCanvas);
 									}
 							  }
 							: undefined}
@@ -1411,10 +1149,6 @@
 						{/if}
 					</span>
 				</button>
-				<!-- <div class="w-20 h-20 ml-auto">
-
-
-			  </div> -->
 			</div>
 		</div>
 	</div>
