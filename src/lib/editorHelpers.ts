@@ -105,31 +105,7 @@ export function downloadImage(imageData: ImageData, imgName: string) {
     }, 'image/png');
 }
 
-export function drawMask(
-    canvas: HTMLCanvasElement,
-    maskArray: any,
-    opacity: number,
-    clearCanvasFirst = false
-) {
-    const canvasCtx = canvas.getContext('2d');
-    if (canvasCtx) {
-        if (clearCanvasFirst) {
-            clearCanvas(canvas);
-        }
-        const prevMode = canvasCtx.globalCompositeOperation;
-        canvasCtx.globalCompositeOperation = 'source-over';
-        canvasCtx.fillStyle = `rgba(64, 141, 255, ${opacity})`;
 
-        for (let y = 0; y < maskArray.length; y++) {
-            for (let x = 0; x < maskArray[y].length; x++) {
-                if (maskArray[y][x]) {
-                    canvasCtx.fillRect(x, y, 1, 1);
-                }
-            }
-        }
-        canvasCtx.globalCompositeOperation = prevMode;
-    }
-}
 
 export function clearCanvas(canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');

@@ -209,24 +209,6 @@ async function runEncoder(data) {
     return output
 }
 
-// 
-// async function runDecoder(data) {
-
-//     let inputDict = {
-//         "has_mask_input": tf.tensor(data.has_mask_input.data, data.has_mask_input.dims, 'float32'),
-//         "image_embeddings": tf.tensor(data.image_embeddings.data, data.image_embeddings.dims, 'float32'),
-//         "mask_input": tf.tensor(data.mask_input.data, data.mask_input.dims, 'float32'),
-//         "orig_im_size": tf.tensor(data.orig_im_size.data, data.orig_im_size.dims, 'float32'),
-//         "point_coords": tf.tensor(data.point_coords.data, data.point_coords.dims, 'float32'),
-//         "point_labels": tf.tensor(data.point_labels.data, data.point_labels.dims, 'float32'),
-//     }
-//     
-//     const predictions = await tfjsDecoder.executeAsync(inputDict);
-
-//     
-//     const lastData = await predictions[predictions.length - 1].arraySync();
-//     return lastData[0][0];
-// }
 
 
 async function runDecoderONNX(data) {

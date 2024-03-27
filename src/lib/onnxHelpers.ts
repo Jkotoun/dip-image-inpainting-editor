@@ -1,4 +1,4 @@
-export interface loadedImgRGBData {
+export interface imgRGBData {
     rgbArray: Uint8Array;
     width: number;
     height: number;
@@ -8,7 +8,7 @@ export interface loadedImgRGBData {
 	export async function getResizedImgData(
 		img: ImageData,
 		longSideLength: number = 1024
-	): Promise<{resizedImgRGBData: loadedImgRGBData, newWidth: number, newHeight: number}> {
+	): Promise<{resizedImgRGBData: imgRGBData}> {
 		//longerside
 		let imgBitmap: ImageBitmap = await createImageBitmap(img);
 		let newWidth, newHeight;
@@ -27,10 +27,10 @@ export interface loadedImgRGBData {
 		tempContext?.drawImage(imgBitmap, 0, 0, newWidth, newHeight);
 		let tmpCanvasData = tempCanvas.getContext('2d')!.getImageData(0, 0, tempCanvas.width, tempCanvas.height)
         let rgbArray= imgDataToRGBArray(tmpCanvasData);
-		return {resizedImgRGBData: rgbArray, newWidth, newHeight};
+		return {resizedImgRGBData: rgbArray};
 	}
 
-	export function imgDataToRGBArray(imgData: ImageData): loadedImgRGBData {
+	export function imgDataToRGBArray(imgData: ImageData): imgRGBData {
 		let pixels = imgData?.data;
 		//create rgb array
 		let rgbArray = new Uint8Array(imgData.width * imgData.height * 3);
@@ -39,7 +39,7 @@ export interface loadedImgRGBData {
 			rgbArray[i * 3 + 1] = pixels![i * 4 + 1];
 			rgbArray[i * 3 + 2] = pixels![i * 4 + 2];
 		}
-		return { rgbArray, width: imgData.width, height: imgData.height } as loadedImgRGBData;
+		return { rgbArray, width: imgData.width, height: imgData.height } as imgRGBData;
 	}
 
     export function reshapeBufferToNCHW(
