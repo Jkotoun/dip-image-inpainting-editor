@@ -8,7 +8,7 @@ export interface imgRGBData {
 	export async function getResizedImgData(
 		img: ImageData,
 		longSideLength: number = 1024
-	): Promise<{resizedImgRGBData: imgRGBData}> {
+	): Promise<imgRGBData> {
 		//longerside
 		let imgBitmap: ImageBitmap = await createImageBitmap(img);
 		let newWidth, newHeight;
@@ -27,7 +27,7 @@ export interface imgRGBData {
 		tempContext?.drawImage(imgBitmap, 0, 0, newWidth, newHeight);
 		let tmpCanvasData = tempCanvas.getContext('2d')!.getImageData(0, 0, tempCanvas.width, tempCanvas.height)
         let rgbArray= imgDataToRGBArray(tmpCanvasData);
-		return {resizedImgRGBData: rgbArray};
+		return rgbArray;
 	}
 
 	export function imgDataToRGBArray(imgData: ImageData): imgRGBData {

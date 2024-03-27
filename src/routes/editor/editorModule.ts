@@ -1,5 +1,5 @@
 import { clearCanvas } from "$lib/editorHelpers";
-import { booleanMaskToUint8Buffer, imgDataToRGBArray, reshapeBufferToNCHW, reshapeCHWtoHWC } from "$lib/onnxHelpers";
+import { booleanMaskToUint8Buffer, imgDataToRGBArray, reshapeBufferToNCHW, reshapeCHWtoHWC, type imgRGBData } from "$lib/onnxHelpers";
 import { MESSAGE_TYPES } from "../../workers/messageTypes";
 
 export interface SAMmarker {
@@ -126,26 +126,26 @@ export function canvasBrushDraw(
     return { currentX: x, currentY: y };
 }
 
+//create mask and image buffer from current editor state and send message to webworker
 export async function runInpainting(currentEditorState: editorState, worker: Worker): Promise<void> {
-    let imgUInt8Array = imgDataToRGBArray(currentEditorState.imgData).rgbArray;
-    let nchwBuffer = reshapeBufferToNCHW(
-        imgUInt8Array,
+    let imageNCHWBuffer = reshapeBufferToNCHW(
+        imgDataToRGBArray(currentEditorState.imgData).rgbArray,
         1,
         3,
         currentEditorState.imgData.width,
         currentEditorState.imgData.height
     );
-    //combine currentstate brushmask and sammask with or
+
+    //combine currentstate brushmask and sammask with 'or' operation
     let maskArrayCombined = currentEditorState.maskBrush.map((row: boolean[], y: number) =>
         row.map((val, x) => val || currentEditorState.maskSAMDilated[y][x])
     );
-
     let maskUInt8Buffer = booleanMaskToUint8Buffer(maskArrayCombined);
     worker.postMessage({
         type: MESSAGE_TYPES.INPAINTING_RUN,
         data: {
             imageTensorData: {
-                data: nchwBuffer,
+                data: imageNCHWBuffer,
                 dims: [1, 3, currentEditorState.imgData.height, currentEditorState.imgData.width]
             },
 
@@ -159,4 +159,67 @@ export async function runInpainting(currentEditorState: editorState, worker: Wor
 
 export function createEmptyMaskArray(width: number, height: number) {
     return new Array(height).fill(false).map(() => new Array(width).fill(false));
+}
+
+export async function createDecoderInputDict(currentEditorState: editorState, resizedImgWidth: number, resizedImgHeight: number) {
+
+    function coordsToResizedImgScale(x: number, y: number) {
+        const imageX = (x / currentEditorState.imgData.width) * resizedImgWidth;
+        const imageY = (y / currentEditorState.imgData.height) * resizedImgHeight;
+        return { x: imageX, y: imageY };
+    }
+
+    let inputPoint: Array<{ x: number; y: number }> = currentEditorState.clickedPositions.map(
+        ({ x, y }) => coordsToResizedImgScale(x, y)
+    );
+    let inputLabels: Array<number> = currentEditorState.clickedPositions.map(({ type }) =>
+        type === 'positive' ? 1 : 0
+    );
+
+    const onnxInputPoints = inputPoint.map(({ x, y }) => [x, y]);
+
+    //necessary when no box input is provided
+    onnxInputPoints.push([0, 0]);
+    inputLabels.push(-1);
+
+    let modelInput = {
+        image_embeddings: {
+            data: currentEditorState.currentImgEmbedding!.data,
+            dims: currentEditorState.currentImgEmbedding!.dims
+        },
+        point_coords: {
+            data: onnxInputPoints.flat(),
+            dims: [1, onnxInputPoints.length, 2]
+        },
+        point_labels: {
+            data: inputLabels,
+            dims: [1, inputLabels.length]
+        },
+        mask_input: {
+            data: new Float32Array(256 * 256).fill(0),
+            dims: [1, 1, 256, 256]
+        },
+        has_mask_input: {
+            data: [0],
+            dims: [1]
+        },
+        orig_im_size: {
+            data: [currentEditorState.imgData.height, currentEditorState.imgData.width],
+            dims: [2]
+        }
+    };
+    return modelInput;
+}
+
+
+//resize image data to SAM encoder req (longside 1024) and post message to encoder
+export async function runModelEncoder(resizedImgData: imgRGBData, worker: Worker): Promise<void> {
+    let floatArray = Float32Array.from(resizedImgData.rgbArray);
+    worker.postMessage({
+        type: MESSAGE_TYPES.ENCODER_RUN,
+        data: {
+            img_array_data: floatArray,
+            dims: [resizedImgData.height, resizedImgData.width, 3]
+        }
+    });
 }

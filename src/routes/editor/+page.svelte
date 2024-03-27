@@ -1,14 +1,17 @@
 <script lang="ts">
-	import { onMount} from 'svelte';
+	import { onMount } from 'svelte';
 	import { base } from '$app/paths';
-	import { renderEditorState, type editorState, type SAMmarker, canvasBrushDraw, runInpainting, createEmptyMaskArray } from './editorModule';
 	import {
-		getResizedImgData,
-		imgDataToRGBArray,
-		reshapeBufferToNCHW,
-		booleanMaskToUint8Buffer,
-		reshapeCHWtoHWC
-	} from '$lib/onnxHelpers';
+		renderEditorState,
+		type editorState,
+		type SAMmarker,
+		canvasBrushDraw,
+		runInpainting,
+		createEmptyMaskArray,
+		createDecoderInputDict,
+		runModelEncoder
+	} from './editorModule';
+	import { getResizedImgData } from '$lib/onnxHelpers';
 	import { RGB_CHW_array_to_imageData } from './editorModule';
 	import {
 		dilateMaskByPixels,
@@ -50,19 +53,15 @@
 	import { goto } from '$app/navigation';
 
 	let uploadedImage: string | null = null;
-
-	
 	let headerHeightPx = 0;
-
-
 	let encoderLoading = true;
 	let decoderLoading = true;
 	let inpainterLoading = true;
-	let isEmbedderRunning = false;
+	let isEncoderRunning = false;
 	let decoderRunning = false;
 	let inpaintingRunning = false;
 	$: anythingEssentialLoading =
-		inpaintingRunning || encoderLoading || decoderLoading || isEmbedderRunning || decoderRunning;
+		inpaintingRunning || encoderLoading || decoderLoading || isEncoderRunning || decoderRunning;
 
 	let enablePan: boolean = false;
 	//segmentation model constants
@@ -95,14 +94,26 @@
 	let selectedBrushMode: 'brush' | 'eraser' = 'brush'; // Initial selected option
 	let selectedTool: 'brush' | 'segment_anything' = 'segment_anything';
 	let selectedSAMMode: 'positive' | 'negative' = 'positive';
+	const drawerStore = getDrawerStore();
 
+	let panzoom: any;
+	let currentZoom = 1;
 
-	//TODO stores
-	//editorState
-	//segmentAnythingState
-	//inpainterState
+	// change dilatation when pixelsDilatation value changes
+	$: changeDilatation(pixelsDilatation, currentEditorState);
 
-	
+	if ($mainWorker) {
+		$mainWorker.onmessage = handleWorkerModelsMessages;
+	}
+
+	const runEncoderCurrentState = async () => {
+		getResizedImgData(currentEditorState.imgData, longSideLength).then((resizedImgRGBData) => {
+			//set globals for decoder (needs to map input points to correct coordinates in resized image)
+			resizedImgWidth = resizedImgRGBData.width;
+			resizedImgHeight = resizedImgRGBData.height;
+			runModelEncoder(resizedImgRGBData, $mainWorker!);
+		});
+	};
 
 	function handleWorkerModelsMessages(event: MessageEvent<any>) {
 		const { data, type } = event.data;
@@ -120,52 +131,89 @@
 			}
 			decoderRunning = false;
 		} else if (type === MESSAGE_TYPES.ENCODER_RUN_RESULT_SUCCESS && !encoderLoading) {
-			// let img_tensor = tf.tensor(data.embeddings as any, data.dims as any, 'float32');
 			currentEditorState.currentImgEmbedding = {
 				data: data.embeddings,
 				dims: data.dims
 			};
-			isEmbedderRunning = false;
+			isEncoderRunning = false;
 		} else if (type === MESSAGE_TYPES.INPAINTING_RUN_RESULT_SUCCESS && !inpainterLoading) {
 			RGB_CHW_array_to_imageData(data, imageCanvas.height, imageCanvas.width).then(
 				(resultImgData) => {
-					setInpaintedImgEditorState(resultImgData);
+					handleInpaintedImgData(resultImgData);
 					inpaintingRunning = false;
 				}
 			);
 		} else if (type === MESSAGE_TYPES.ALL_MODELS_LOADED) {
 			decoderLoading = encoderLoading = inpainterLoading = false;
-			//run only if editor state is already set and embedding hasnt been run already
 			if (
 				currentEditorState &&
 				currentEditorState.imgData &&
-				!isEmbedderRunning &&
+				!isEncoderRunning &&
 				!currentEditorState.currentImgEmbedding
 			) {
-				isEmbedderRunning = true;
-				runModelEncoder(currentEditorState.imgData);
+				isEncoderRunning = true;
+				runEncoderCurrentState();
 			}
-			// Continue with your logic here...
 		} else if (type === MESSAGE_TYPES.ENCODER_DECODER_LOADED) {
 			encoderLoading = decoderLoading = false;
-			//run only if editor state is already set and embedding hasnt been run already
 			if (
 				currentEditorState &&
 				currentEditorState.imgData &&
-				!isEmbedderRunning &&
+				!isEncoderRunning &&
 				!currentEditorState.currentImgEmbedding
 			) {
-				isEmbedderRunning = true;
-				runModelEncoder(currentEditorState.imgData).then((_) => {
+				isEncoderRunning = true;
+				runEncoderCurrentState().then((_) => {
 					$mainWorker?.postMessage({ type: MESSAGE_TYPES.LOAD_INPAINTER });
 				});
 			}
 		}
 	}
-	if ($mainWorker) {
-		$mainWorker.onmessage = handleWorkerModelsMessages;
-	}
 
+	onMount(async () => {
+		let header = document.querySelector('header');
+		if (header) {
+			headerHeightPx = header.getBoundingClientRect().height;
+		}
+		if ($uploadedImgBase64 === null || $uploadedImgFileName === '') {
+			goto(base == '' ? '/' : base);
+		}
+		uploadedImage = $uploadedImgBase64;
+		window.addEventListener('resize', () => {
+			if (imageCanvas) {
+				const canvasElementSize = imageCanvas.getBoundingClientRect();
+				ImgResToCanvasSizeRatio = imageCanvas.width / canvasElementSize.width;
+			}
+		});
+		if (!uploadedImage || !uploadedImgFileName) {
+			goto(base == '' ? '/' : base);
+			return;
+		}
+		currentEditorState = await initEditorState(uploadedImage, $uploadedImgFileName);
+
+		if (!$mainWorker) {
+			goto(base == '' ? '/' : base);
+		} else {
+			/*mainworker has set modelsLoaded function callback (setups editor etc.)
+			it is called either based on response to this message or after models are loaded 
+			(then, the message is sent automatically after loading)*/
+			$mainWorker.postMessage({ type: MESSAGE_TYPES.CHECK_MODELS_LOADING_STATE });
+		}
+		panzoom = Panzoom(canvasesContainer, {
+			disablePan: !enablePan,
+			minScale: 1,
+			maxScale: 10,
+			disableZoom: anythingEssentialLoading
+		}) as PanzoomObject;
+		canvasesContainer.parentElement!.addEventListener('wheel', panzoom.zoomWithWheel);
+		canvasesContainer.addEventListener('panzoomchange', (event: any) => {
+			currentZoom = event.detail.scale;
+		});
+		setTimeout(() => panzoom.zoom(0, 100));
+		panzoom.zoom(5, { animate: true });
+	});
+
+	//change dilatation when pixelsDilatation value changes
 	async function changeDilatation(pixelsDilatation: number, currentEditorState: editorState) {
 		if (currentEditorState) {
 			currentEditorState.maskSAMDilated = await dilateMaskByPixels(
@@ -176,10 +224,8 @@
 		}
 	}
 
-	// change dilatation when pixelsDilatation value changes
-	$: changeDilatation(pixelsDilatation, currentEditorState);
-
-	const setupEditor = async (sourceImgBase64Data: string, sourceImgName: string) => {
+	//initializes editor state on new image
+	const initEditorState = async (sourceImgBase64Data: string, sourceImgName: string) => {
 		return new Promise<editorState>((resolve, reject) => {
 			const img = new Image();
 			img.src = sourceImgBase64Data;
@@ -228,97 +274,27 @@
 			};
 		});
 	};
-	
 
-
-	
-
-	async function runModelEncoder(imageData: ImageData): Promise<void> {
-		const { resizedImgRGBData } = await getResizedImgData(
-			imageData,
-			longSideLength
-		);
-		//GLOBALS
-		resizedImgWidth = resizedImgRGBData.width;
-		resizedImgHeight = resizedImgRGBData.height;
-
-		let floatArray = Float32Array.from(resizedImgRGBData.rgbArray);
-		$mainWorker?.postMessage({
-			type: MESSAGE_TYPES.ENCODER_RUN,
-			data: {
-				img_array_data: floatArray,
-				dims: [resizedImgRGBData.height, resizedImgRGBData.width, 3]
-			}
-		});
-	}
-
-	//move to local module
-	async function createDecoderInputDict(currentEditorState: editorState) {
-		let inputPoint: Array<{ x: number; y: number }> = currentEditorState.clickedPositions.map(
-			({ x, y }) => coordsToResizedImgScale(x, y)
-		);
-		let inputLabels: Array<number> = currentEditorState.clickedPositions.map(({ type }) =>
-			type === 'positive' ? 1 : 0
-		);
-
-		const onnxInputPoints = inputPoint.map(({ x, y }) => [x, y]);
-
-		//necessary when no box input is provided
-		onnxInputPoints.push([0, 0]);
-		inputLabels.push(-1);
-
-		let modelInput = {
-			image_embeddings: {
-				data: currentEditorState.currentImgEmbedding!.data,
-				dims: currentEditorState.currentImgEmbedding!.dims
-			},
-			point_coords: {
-				data: onnxInputPoints.flat(),
-				dims: [1, onnxInputPoints.length, 2]
-			},
-			point_labels: {
-				data: inputLabels,
-				dims: [1, inputLabels.length]
-			},
-			mask_input: {
-				data: new Float32Array(256 * 256).fill(0),
-				dims: [1, 1, 256, 256]
-			},
-			has_mask_input: {
-				data: [0],
-				dims: [1]
-			},
-			orig_im_size: {
-				data: [imageCanvas.height, imageCanvas.width],
-				dims: [2]
-			}
-		};
-		return modelInput;
-	}
-
-	async function runModelDecoder(
-		currentEditorState: editorState
-	): Promise<boolean[][] | undefined> {
+	//post message with decoder input dict to webworker
+	const runDecoderCurrentState = async () => {
 		if (!currentEditorState.currentImgEmbedding) {
 			return;
 		}
 		decoderRunning = true;
-		const modelInput = await createDecoderInputDict(currentEditorState);
+		const modelInput = await createDecoderInputDict(
+			currentEditorState,
+			resizedImgWidth,
+			resizedImgHeight
+		);
 		$mainWorker?.postMessage({
 			type: MESSAGE_TYPES.DECODER_RUN,
 			data: modelInput
 		});
-	}
-
-	function coordsToResizedImgScale(x: number, y: number) {
-		const imageX = (x / imageCanvas.width) * resizedImgWidth;
-		const imageY = (y / imageCanvas.height) * resizedImgHeight;
-		return { x: imageX, y: imageY };
-	}
+	};
 
 	async function handleCanvasClick(event: MouseEvent) {
-		console.log("canvas log")
-		console.log(imageCanvas.getBoundingClientRect().width)
+		console.log('canvas log');
+		console.log(imageCanvas.getBoundingClientRect().width);
 		if (anythingEssentialLoading) {
 			return;
 		}
@@ -327,9 +303,9 @@
 		const xScaled = Math.abs(event.offsetX) * ImgResToCanvasSizeRatio;
 		const yScaled = Math.abs(event.offsetY) * ImgResToCanvasSizeRatio;
 
-		console.log(event.offsetX, event.offsetY)
-		console.log("scaled")
-		console.log(xScaled, yScaled)
+		console.log(event.offsetX, event.offsetY);
+		console.log('scaled');
+		console.log(xScaled, yScaled);
 
 		editorStatesHistory = [...editorStatesHistory, currentEditorState];
 		currentEditorState = {
@@ -346,13 +322,8 @@
 			currentImgEmbedding: currentEditorState.currentImgEmbedding
 		} as editorState;
 		renderEditorState(currentEditorState, imageCanvas, maskCanvas, ImgResToCanvasSizeRatio);
-		runModelDecoder(currentEditorState);
+		runDecoderCurrentState();
 	}
-
-	
-
-
-
 
 	function undoLastEditorAction() {
 		//new state management
@@ -371,7 +342,6 @@
 			currentEditorState = editorStatesUndoed[editorStatesUndoed.length - 1];
 			editorStatesUndoed = editorStatesUndoed.slice(0, -1);
 			renderEditorState(currentEditorState, imageCanvas, maskCanvas, ImgResToCanvasSizeRatio);
-
 		}
 	}
 
@@ -506,7 +476,8 @@
 		}
 	}
 
-	async function setInpaintedImgEditorState(inpaintedImgData: ImageData) {
+	//handle inpainted image data - set and render new editor state and run encoder on new image
+	async function handleInpaintedImgData(inpaintedImgData: ImageData) {
 		editorStatesHistory = [...editorStatesHistory, currentEditorState];
 		let newEditorState: editorState = {
 			maskBrush: createEmptyMaskArray(imgDataOriginal.width, imgDataOriginal.height),
@@ -517,59 +488,10 @@
 			currentImgEmbedding: undefined
 		};
 		currentEditorState = newEditorState;
-
 		renderEditorState(currentEditorState, imageCanvas, maskCanvas, ImgResToCanvasSizeRatio);
-
-		isEmbedderRunning = true;
-		runModelEncoder(currentEditorState.imgData);
+		isEncoderRunning = true;
+		runEncoderCurrentState();
 	}
-
-	onMount(async () => {
-		let header = document.querySelector('header');
-		if (header) {
-			headerHeightPx = header.getBoundingClientRect().height;
-		}
-		if ($uploadedImgBase64 === null || $uploadedImgFileName === '') {
-			goto(base == '' ? '/' : base);
-		}
-		uploadedImage = $uploadedImgBase64;
-		window.addEventListener('resize', () => {
-			if (imageCanvas) {
-				const canvasElementSize = imageCanvas.getBoundingClientRect();
-				ImgResToCanvasSizeRatio = imageCanvas.width / canvasElementSize.width;
-			}
-		});
-		if (!uploadedImage || !uploadedImgFileName) {
-			goto(base == '' ? '/' : base);
-			return;
-		}
-		currentEditorState = await setupEditor(uploadedImage, $uploadedImgFileName);
-
-		if (!$mainWorker) {
-			goto(base == '' ? '/' : base);
-		} else {
-			/*mainworker has set modelsLoaded function callback (setups editor etc.)
-			it is called either based on response to this message or after models are loaded 
-			(then, the message is sent automatically after loading)*/
-			$mainWorker.postMessage({ type: MESSAGE_TYPES.CHECK_MODELS_LOADING_STATE });
-		}
-		panzoom = Panzoom(canvasesContainer, {
-			disablePan: !enablePan,
-			minScale: 1,
-			maxScale: 10,
-			disableZoom: anythingEssentialLoading
-		}) as PanzoomObject;
-		canvasesContainer.parentElement!.addEventListener('wheel', panzoom.zoomWithWheel);
-		canvasesContainer.addEventListener('panzoomchange', (event: any) => {
-			currentZoom = event.detail.scale;
-		});
-		setTimeout(() => panzoom.zoom(0, 100));
-		panzoom.zoom(5, { animate: true });
-	});
-	const drawerStore = getDrawerStore();
-
-	let panzoom: any;
-	let currentZoom = 1;
 
 	function handlePanzoomSettingsChange(enablePan: boolean, anythingEssentialLoading: boolean) {
 		if (panzoom) {
@@ -644,7 +566,13 @@
 				</RadioGroup>
 				<label for="pixelsDilatation">Mask dilatation: {pixelsDilatation}</label>
 				<div class="font-thin">For best results, all edges of object should be inside the mask</div>
-				<input type="range" min="0" max="25" bind:value={pixelsDilatation} on:change={(e) => console.log(e)} />
+				<input
+					type="range"
+					min="0"
+					max="25"
+					bind:value={pixelsDilatation}
+					on:change={(e) => console.log(e)}
+				/>
 			{/if}
 		</div>
 	</TabGroup>
@@ -826,7 +754,7 @@
 					<div class="text-primary-500 font-bold text-2xl mt-2">Models loading...</div>
 				{:else if inpaintingRunning}
 					<div class="text-primary-500 font-bold text-2xl mt-2">Removing area...</div>
-				{:else if isEmbedderRunning}
+				{:else if isEncoderRunning}
 					<div class="text-primary-500 font-bold text-2xl mt-2">Processing new image...</div>
 				{:else if decoderRunning}
 					<div class="text-primary-500 font-bold text-2xl mt-2">Computing mask...</div>
@@ -846,103 +774,104 @@
 			>
 				<div
 					class="relative !h-full !w-full flex justify-center"
-					on:mouseenter={!enablePan ? showBrushCursor : undefined}
-					on:mouseleave={!enablePan ? hideBrushCursor : undefined}
+					
 					role="group"
 				>
-					<div class="absolute w-full h-full overflow-hidden">
-						<div
-							id="brushToolCursor"
-							style="
-		display: {selectedTool === 'segment_anything' || anythingEssentialLoading
-								? 'none'
-								: currentCursor === 'default'
-								? 'none'
-								: 'block'};
-		width: {brushSize - 2}px;
-		height: {brushSize - 2}px;
-		left: {currentCanvasRelativeX}px;
-		top: {currentCanvasRelativeY}px;
-		background-color: {selectedBrushMode === 'brush' ? '#408dff' : '#f5f5f5'};
-		border: 1px solid #0261ed;
-		opacity: {isPainting ? 0.6 : 0.5};
-
-	"
-						/>
-					</div>
-					<div class="flex-none"></div>
+					
+					<div class="flex-none  " />
 					<!-- default width so the page isnt empty till load -->
-					<div class="relative flex-none  shrink">
-					<canvas
-						class="shadow-lg
+					<div class="relative flex-none shrink" role="group" on:mouseenter={!enablePan ? showBrushCursor : undefined}
+					on:mouseleave={!enablePan ? hideBrushCursor : undefined}>
+						<div class="absolute w-full h-full overflow-hidden">
+							<div
+								id="brushToolCursor"
+								style="
+			display: {selectedTool === 'segment_anything' || anythingEssentialLoading
+									? 'none'
+									: currentCursor === 'default'
+									? 'none'
+									: 'block'};
+			width: {brushSize - 2}px;
+			height: {brushSize - 2}px;
+			left: {currentCanvasRelativeX}px;
+			top: {currentCanvasRelativeY}px;
+			background-color: {selectedBrushMode === 'brush' ? '#408dff' : '#f5f5f5'};
+			border: 1px solid #0261ed;
+			opacity: {isPainting ? 0.6 : 0.5};
+	
+		"
+							/>
+						</div>
+						<canvas
+							class="shadow-lg
 						{anythingEssentialLoading ? 'opacity-30 cursor-not-allowed' : ''} "
-						id="imageCanvas"
-						bind:this={imageCanvas}
-					/>
+							id="imageCanvas"
+							bind:this={imageCanvas}
+						/>
 
-					<canvas
-						id="maskCanvas"
-						class="
+						<canvas
+							id="maskCanvas"
+							class="
 						{enablePan ? '' : 'panzoom-exclude'} 
 						{anythingEssentialLoading ? 'opacity-30 cursor-not-allowed' : ''}"
-						bind:this={maskCanvas}
-						on:mousedown={selectedTool === 'brush' && !enablePan
-							? (e) => startPaintingMouse(e, maskCanvas)
-							: undefined}
-						on:mouseup={selectedTool === 'brush' && !enablePan ? stopPainting : undefined}
-						on:mousemove={(event) =>
-							selectedTool === 'brush' && !enablePan
-								? handleEditorCursorMove(event, maskCanvas)
+							bind:this={maskCanvas}
+							on:mousedown={selectedTool === 'brush' && !enablePan
+								? (e) => startPaintingMouse(e, maskCanvas)
 								: undefined}
-						on:touchstart={selectedTool === 'brush'
-							? // && !enablePan
-							  (e) => {
-									console.log('start');
-									console.log(e);
-									if (e.touches.length === 1) {
-										startPaintingTouch(e, maskCanvas);
-									} else {
+							on:mouseup={selectedTool === 'brush' && !enablePan ? stopPainting : undefined}
+							on:mousemove={(event) =>
+								selectedTool === 'brush' && !enablePan
+									? handleEditorCursorMove(event, maskCanvas)
+									: undefined}
+							on:touchstart={selectedTool === 'brush'
+								? // && !enablePan
+								  (e) => {
+										console.log('start');
+										console.log(e);
+										if (e.touches.length === 1) {
+											startPaintingTouch(e, maskCanvas);
+										} else {
+											stopPainting();
+										}
+								  }
+								: undefined}
+							on:touchend={selectedTool === 'brush'
+								? // &&  !enablePan
+								  (e) => {
+										console.log('end');
+										console.log(e);
 										stopPainting();
-									}
-							  }
-							: undefined}
-						on:touchend={selectedTool === 'brush'
-							? // &&  !enablePan
-							  (e) => {
-									console.log('end');
-									console.log(e);
-									stopPainting();
-							  }
-							: undefined}
-						on:touchmove={selectedTool === 'brush'
-							? // &&  !enablePan
-							  (e) => {
-									console.log('move');
-									console.log(e);
-									if (e.touches.length === 1) {
-										e.preventDefault();
-										handleEditorCursorMove(e, maskCanvas);
-									}
-							  }
-							: undefined}
-						on:click={selectedTool === 'segment_anything' && !enablePan
-							? async (e) => {
-									console.log(e);
-									handleCanvasClick(e);
-							  }
-							: undefined}
-					/>
+								  }
+								: undefined}
+							on:touchmove={selectedTool === 'brush'
+								? // &&  !enablePan
+								  (e) => {
+										console.log('move');
+										console.log(e);
+										if (e.touches.length === 1) {
+											e.preventDefault();
+											handleEditorCursorMove(e, maskCanvas);
+										}
+								  }
+								: undefined}
+							on:click={selectedTool === 'segment_anything' && !enablePan
+								? async (e) => {
+										console.log(e);
+										handleCanvasClick(e);
+								  }
+								: undefined}
+						/>
 
-					<img
-						class="shadow-lg
+						<img
+							class="shadow-lg
 						{anythingEssentialLoading ? 'opacity-50 cursor-not-allowed' : ''}
 						"
-						src={$uploadedImgBase64}
-						alt="originalImage"
-						bind:this={originalImgElement}
-					/>
+							src={$uploadedImgBase64}
+							alt="originalImage"
+							bind:this={originalImgElement}
+						/>
 					</div>
-					<div class="flex-none"></div>
+					<div class="flex-none" />
 				</div>
 			</div>
 		</div>
