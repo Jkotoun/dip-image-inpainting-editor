@@ -84,7 +84,6 @@
 	let editorStatesHistory: editorState[] = [];
 	//saved for potential redos after undo actions, emptied on new action after series of undos
 	let editorStatesUndoed: editorState[] = [];
-	let currentCursor: 'default' | 'brush' | 'eraser' = 'default';
 	//brush tool
 	let brushSize = 10;
 	let prevMouseX = 0;
@@ -92,10 +91,24 @@
 	let currentCanvasRelativeX = 0;
 	let currentCanvasRelativeY = 0;
 	let selectedBrushMode: 'brush' | 'eraser' = 'brush'; // Initial selected option
-	let selectedTool: 'brush' | 'segment_anything' = 'segment_anything';
+	let selectedTool: tool = 'segment_anything';
+	let displayBrushCursor: boolean = false;
 	let selectedSAMMode: 'positive' | 'negative' = 'positive';
 	const drawerStore = getDrawerStore();
+	type tool = 'brush' | 'segment_anything';
 
+	
+	const currentCanvasCursor = (enablePan: boolean, selectedTool: tool) => {
+		if (enablePan === true) {
+			return 'move';
+		} else {
+			if (selectedTool === 'segment_anything') {
+				return 'default';
+			} else {
+				return 'none';
+			}
+		}
+	};
 	let panzoom: any;
 	let currentZoom = 1;
 
@@ -199,11 +212,13 @@
 			(then, the message is sent automatically after loading)*/
 			$mainWorker.postMessage({ type: MESSAGE_TYPES.CHECK_MODELS_LOADING_STATE });
 		}
+
 		panzoom = Panzoom(canvasesContainer, {
 			disablePan: !enablePan,
 			minScale: 1,
 			maxScale: 10,
-			disableZoom: anythingEssentialLoading
+			disableZoom: anythingEssentialLoading,
+			cursor: 'default'
 		}) as PanzoomObject;
 		canvasesContainer.parentElement!.addEventListener('wheel', panzoom.zoomWithWheel);
 		canvasesContainer.addEventListener('panzoomchange', (event: any) => {
@@ -448,13 +463,7 @@
 		}
 	}
 
-	function showBrushCursor(event: MouseEvent) {
-		currentCursor = selectedBrushMode === 'brush' ? 'brush' : 'eraser';
-	}
 
-	function hideBrushCursor(event: MouseEvent) {
-		currentCursor = 'default';
-	}
 
 	function getImageData(canvas: HTMLCanvasElement) {
 		return canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height);
@@ -763,34 +772,25 @@
 			<div
 				class="canvases w-full"
 				bind:this={canvasesContainer}
-				style="cursor: {enablePan
-					? 'move'
-					: selectedTool === 'segment_anything'
-					? 'default'
-					: currentCursor === 'default'
-					? 'auto'
-					: 'none'}
-				"
+				
 			>
-				<div
-					class="relative !h-full !w-full flex justify-center"
-					
-					role="group"
-				>
-					
-					<div class="flex-none  " />
+				<div class="relative !h-full !w-full flex justify-center" role="group" >
+					<div class="flex-none" />
 					<!-- default width so the page isnt empty till load -->
-					<div class="relative flex-none shrink" role="group" on:mouseenter={!enablePan ? showBrushCursor : undefined}
-					on:mouseleave={!enablePan ? hideBrushCursor : undefined}>
+					<div
+						class="relative flex-none shrink"
+						style="cursor: {currentCanvasCursor(enablePan, selectedTool)}"
+						on:mouseenter={() => {displayBrushCursor = (selectedTool === 'brush' && !anythingEssentialLoading && !enablePan)}}
+						on:mouseleave={() => {displayBrushCursor = false}}
+						role="group"
+					>
 						<div class="absolute w-full h-full overflow-hidden">
 							<div
 								id="brushToolCursor"
+
+								role="group"
 								style="
-			display: {selectedTool === 'segment_anything' || anythingEssentialLoading
-									? 'none'
-									: currentCursor === 'default'
-									? 'none'
-									: 'block'};
+			display: {displayBrushCursor ? 'block' : 'none'};
 			width: {brushSize - 2}px;
 			height: {brushSize - 2}px;
 			left: {currentCanvasRelativeX}px;
@@ -846,8 +846,6 @@
 							on:touchmove={selectedTool === 'brush'
 								? // &&  !enablePan
 								  (e) => {
-										console.log('move');
-										console.log(e);
 										if (e.touches.length === 1) {
 											e.preventDefault();
 											handleEditorCursorMove(e, maskCanvas);
