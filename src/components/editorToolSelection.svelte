@@ -2,7 +2,7 @@
 	import { RadioGroup, RadioItem, Tab, TabGroup } from '@skeletonlabs/skeleton';
 	import type { tool, brushMode, SAMMode } from '../types/editorTypes';
 	import { Brush, Eraser, MinusCircle, PlusCircleIcon, WandSparkles } from 'lucide-svelte';
-	export let selectedTool: tool = 'brush';
+	export let selectedTool: tool = 'segment_anything';
 	export let selectedBrushMode: brushMode = 'brush';
 	export let selectedSAMMode: SAMMode = 'positive';
 	export let SAMMaskDilatation: number = 10;
