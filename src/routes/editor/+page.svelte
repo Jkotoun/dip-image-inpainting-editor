@@ -83,7 +83,7 @@
 	let gPanzoomObj: PanzoomObject;
 
 	$: handleBrushModeChange(gSelectedBrushMode, gMaskCanvas);
-	$: handleDilatationChange(gSAMMaskDilatation, gCurrentEditorState);
+	$: handleDilatationChange(gSAMMaskDilatation);
 	$: handlePanzoomSettingsChange(gPanEnabled, gAnythingEssentialLoading);
 	$: gAnythingEssentialLoading =
 		gInpaintingRunning ||
@@ -210,13 +210,13 @@
 	});
 
 	//change dilatation when pixelsDilatation value changes
-	async function handleDilatationChange(pixelsDilatation: number, currentEditorState: editorState) {
-		if (currentEditorState) {
-			currentEditorState.maskSAMDilated = await dilateMaskByPixels(
+	async function handleDilatationChange(pixelsDilatation: number) {
+		if (gCurrentEditorState) {
+			gCurrentEditorState.maskSAMDilated = await dilateMaskByPixels(
 				pixelsDilatation,
-				currentEditorState.maskSAM
+				gCurrentEditorState.maskSAM
 			);
-			renderEditorState(currentEditorState, gImageCanvas, gMaskCanvas, gImgResToCanvasSizeRatio);
+			renderEditorState(gCurrentEditorState, gImageCanvas, gMaskCanvas, gImgResToCanvasSizeRatio);
 		}
 	}
 
