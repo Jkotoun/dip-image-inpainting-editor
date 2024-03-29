@@ -1,43 +1,40 @@
 <script lang="ts">
-    interface Item {
-        title: string;
-        link: string;
-    }
-    export let title: string;
-    export let items: Item[];
+	import { AppBar, LightSwitch } from '@skeletonlabs/skeleton';
+	import { createEventDispatcher } from 'svelte';
+	const dispatch = createEventDispatcher();
+	export let basepath: string;
+	export let drawerMenu: boolean = false;
+	export let navTitle: { name: string; href?: string };
+	export let links: { name: string; href: string }[] = [];
+	//
 </script>
 
-
-<navbar>
-
-    <div class="navbar">
-        <div class="navbar-title">
-            <h1>{title}</h1>
-        </div>
-        <div class="navbar-items">
-            {#each items as item}
-                <a href={item.link} >{item.title}</a>
-            {/each}
-        </div>
-    </div>
-
-</navbar>
-
+<AppBar>
+	<svelte:fragment slot="lead">
+		{#if drawerMenu}
+			<button class="lg:hidden btn btn-sm mr-4" on:click={() => dispatch('openDrawerMenu')}>
+				<span>
+					<svg viewBox="0 0 100 80" class="fill-token w-4 h-4">
+						<rect width="100" height="20" />
+						<rect y="30" width="100" height="20" />
+						<rect y="60" width="100" height="20" />
+					</svg>
+				</span>
+			</button>
+		{/if}
+		{#if navTitle.href}
+			<a href={navTitle.href} class="font-bold lg:inline hidden">{navTitle.name}</a>
+		{:else}
+			<span class="font-bold lg:inline hidden">{navTitle.name}</span>
+		{/if}
+	</svelte:fragment>
+	<svelte:fragment slot="trail">
+		{#each links as link}
+			<a href={link.href} class="font-semibold">{link.name}</a>
+		{/each}
+		<LightSwitch />
+	</svelte:fragment>
+</AppBar>
 
 <style>
-    .navbar {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 1rem;
-        background-color: #f1f1f1;
-    }
-    .navbar-title h1 {
-        margin: 0;
-    }
-    .navbar-items a {
-        margin: 0 1rem;
-        text-decoration: none;
-        color: #000;
-    }
-</style> 
+</style>

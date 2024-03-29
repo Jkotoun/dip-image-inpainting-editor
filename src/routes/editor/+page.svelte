@@ -51,6 +51,7 @@
 		TabGroup
 	} from '@skeletonlabs/skeleton';
 	import { goto } from '$app/navigation';
+	import Navbar from '../../components/navbar.svelte';
 
 	let uploadedImage: string | null = null;
 	let headerHeightPx = 0;
@@ -97,7 +98,6 @@
 	const drawerStore = getDrawerStore();
 	type tool = 'brush' | 'segment_anything';
 
-	
 	const currentCanvasCursor = (enablePan: boolean, selectedTool: tool) => {
 		if (enablePan === true) {
 			return 'move';
@@ -463,8 +463,6 @@
 		}
 	}
 
-
-
 	function getImageData(canvas: HTMLCanvasElement) {
 		return canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height);
 	}
@@ -589,26 +587,16 @@
 
 <AppShell slotSidebarLeft="overflow-visible lg:w-80 w-0 h-screen shadow-md z-50">
 	<svelte:fragment slot="header">
-		<AppBar id="appbar">
-			<svelte:fragment slot="lead">
-				<button class="lg:hidden btn btn-sm mr-4" on:click={() => drawerStore.open({})}>
-					<span>
-						<svg viewBox="0 0 100 80" class="fill-token w-4 h-4">
-							<rect width="100" height="20" />
-							<rect y="30" width="100" height="20" />
-							<rect y="60" width="100" height="20" />
-						</svg>
-					</span>
-				</button>
-				<a href={base == '' ? '/' : base} class="font-bold lg:inline hidden">Smart Object remover</a
-				>
-			</svelte:fragment>
-			<svelte:fragment slot="trail">
-				<a href={base == '' ? '/' : base} class="font-semibold">Home</a>
-				<a href="{base}/about" class="font-semibold">About</a>
-				<LightSwitch />
-			</svelte:fragment>
-		</AppBar>
+		<Navbar
+			basepath={base}
+			navTitle={{ name: 'Smart Object Remover', href: base == '' ? '/' : base }}
+			links={[
+				{ name: 'Home', href: base == '' ? '/' : base },
+				{ name: 'About', href: `${base}/about` }
+			]}
+			drawerMenu
+			on:openDrawerMenu={() => drawerStore.open({})}
+		/>
 	</svelte:fragment>
 	<svelte:fragment slot="sidebarLeft">
 		<TabGroup>
@@ -769,25 +757,25 @@
 					<div class="text-primary-500 font-bold text-2xl mt-2">Computing mask...</div>
 				{/if}
 			</div>
-			<div
-				class="canvases w-full"
-				bind:this={canvasesContainer}
-				
-			>
-				<div class="relative !h-full !w-full flex justify-center" role="group" >
+			<div class="canvases w-full" bind:this={canvasesContainer}>
+				<div class="relative !h-full !w-full flex justify-center" role="group">
 					<div class="flex-none" />
 					<!-- default width so the page isnt empty till load -->
 					<div
 						class="relative flex-none shrink"
 						style="cursor: {currentCanvasCursor(enablePan, selectedTool)}"
-						on:mouseenter={() => {displayBrushCursor = (selectedTool === 'brush' && !anythingEssentialLoading && !enablePan)}}
-						on:mouseleave={() => {displayBrushCursor = false}}
+						on:mouseenter={() => {
+							displayBrushCursor =
+								selectedTool === 'brush' && !anythingEssentialLoading && !enablePan;
+						}}
+						on:mouseleave={() => {
+							displayBrushCursor = false;
+						}}
 						role="group"
 					>
 						<div class="absolute w-full h-full overflow-hidden">
 							<div
 								id="brushToolCursor"
-
 								role="group"
 								style="
 			display: {displayBrushCursor ? 'block' : 'none'};
