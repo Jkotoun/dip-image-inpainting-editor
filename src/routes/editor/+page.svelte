@@ -26,12 +26,7 @@
 		decoderResultToMaskArray
 	} from './editorModule';
 	import { getResizedImgData } from '$lib/onnxHelpers';
-	import {
-		dilateMaskByPixels,
-		maskArrayFromImgData,
-		downloadImage,
-		clearCanvas
-	} from '$lib/editorHelpers';
+	import { dilateMaskByPixels, maskArrayFromImgData, downloadImage } from '$lib/editorHelpers';
 
 	//models loading/processing state globals
 	let gEncoderLoading = true;
@@ -267,7 +262,6 @@
 	};
 
 	//post message with decoder input dict to webworker
-
 	async function handleCanvasClick(event: MouseEvent) {
 		const runDecoderCurrentState = async () => {
 			if (!gCurrentEditorState.currentImgEmbedding) {
@@ -308,7 +302,6 @@
 	}
 
 	function undoLastEditorAction() {
-		//new state management
 		if (gEditorStatesHistory.length > 0 && gCurrentEditorState) {
 			gEditorStatesUndoed = [...gEditorStatesUndoed, gCurrentEditorState];
 			gCurrentEditorState = gEditorStatesHistory[gEditorStatesHistory.length - 1];
@@ -318,7 +311,6 @@
 	}
 
 	function redoLastEditorAction() {
-		//new state management
 		if (gEditorStatesUndoed.length > 0 && gCurrentEditorState) {
 			gEditorStatesHistory = [...gEditorStatesHistory, gCurrentEditorState];
 			gCurrentEditorState = gEditorStatesUndoed[gEditorStatesUndoed.length - 1];
@@ -328,7 +320,6 @@
 	}
 
 	function resetEditorState() {
-		//clear all states
 		gPanzoomObj.reset();
 		gCurrentEditorState = {
 			maskBrush: createEmptyMaskArray(gImgDataOriginal.width, gImgDataOriginal.height),
@@ -345,7 +336,7 @@
 		renderEditorState(gCurrentEditorState, gImageCanvas, gMaskCanvas, gImgResToCanvasSizeRatio);
 	}
 
-	// brush tool
+	//init painting globals, draw first brush stroke
 	function startPainting(event: MouseEvent | TouchEvent, canvas: HTMLCanvasElement) {
 		gIsPainting = true;
 		if (event instanceof MouseEvent) {
@@ -360,6 +351,7 @@
 		handleEditorCursorMove(event, canvas);
 	}
 
+	//stop painting and save mask array to editor state
 	function stopPainting() {
 		gIsPainting = false;
 		const ctx = gMaskCanvas.getContext('2d', { willReadFrequently: true });
@@ -378,6 +370,8 @@
 		gCurrentEditorState = { ...gCurrentEditorState, maskBrush: maskArray };
 		gEditorStatesUndoed = [];
 	}
+
+	//draw brush stroke on canvas
 	function handleEditorCursorMove(event: MouseEvent | TouchEvent, canvas: HTMLCanvasElement) {
 		let x: number, y: number;
 		if (event instanceof MouseEvent) {
@@ -416,10 +410,12 @@
 		}
 	}
 
+	//get canvas image data
 	function getImageData(canvas: HTMLCanvasElement) {
 		return canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height);
 	}
 
+	//change brush mode between brush and eraser - destionation-out composite removes pixels from mask canvas
 	function handleBrushModeChange(brushMode: 'brush' | 'eraser', maskCanvas: HTMLCanvasElement) {
 		// Get the canvas element
 		if (!maskCanvas || !brushMode) return;
@@ -429,6 +425,7 @@
 		context.globalCompositeOperation = brushMode === 'brush' ? 'source-over' : 'destination-out';
 	}
 
+	//run inpainting on current editor state
 	async function handleInpainting() {
 		if (!gAnythingEssentialLoading) {
 			gInpaintingRunning = true;
@@ -456,6 +453,7 @@
 		);
 	}
 
+	//set pan and zoom enabled/disabled state
 	function handlePanzoomSettingsChange(enablePan: boolean, anythingEssentialLoading: boolean) {
 		if (gPanzoomObj) {
 			gPanzoomObj.setOptions({
@@ -466,6 +464,7 @@
 	}
 </script>
 
+<!-- drawer menu on phone -->
 <Drawer>
 	<h2 class="p-4 font-semibold">Smart object remover</h2>
 	<hr />
@@ -482,9 +481,7 @@
 	<svelte:fragment slot="header">
 		<Navbar
 			navTitle={{ name: 'Smart Object Remover', href: base == '' ? '/' : base }}
-			links={[
-				{ name: 'Home', href: base == '' ? '/' : base },
-			]}
+			links={[{ name: 'Home', href: base == '' ? '/' : base }]}
 			drawerMenu
 			on:openDrawerMenu={() => drawerStore.open({})}
 		/>
@@ -502,6 +499,7 @@
 		class="flex flex-col gap-y-4 2xl:px-64 xl:px-16 md:px-8 px-2 py-4"
 		style="max-height: calc(100vh - {gHeaderHeightPx}px)"
 	>
+		<!-- upper buttons rows -->
 		<div class="flex flex-none justify-between">
 			<div class="flex lg:gap-x-2 gap-x-1">
 				<button
@@ -545,7 +543,7 @@
 						gShowOriginalImage = false;
 					}}
 				>
-					<span class="hidden sm:inline inset-0 ">Hold to compare</span>
+					<span class="hidden sm:inline inset-0">Hold to compare</span>
 					<span class="sm:hidden inset-0">Compare</span>
 				</button>
 
@@ -560,6 +558,7 @@
 				</button>
 			</div>
 		</div>
+		<!-- canvases -->
 		<div
 			id="mainEditorContainer"
 			class="grow overflow-hidden relative flex justify-center"
@@ -653,7 +652,9 @@
 										handleEditorCursorMove(e, gMaskCanvas);
 								  }
 								: undefined}
-							on:click={gSelectedTool === 'segment_anything' && !gPanEnabled ? handleCanvasClick: undefined}
+							on:click={gSelectedTool === 'segment_anything' && !gPanEnabled
+								? handleCanvasClick
+								: undefined}
 						/>
 
 						<img
@@ -669,6 +670,7 @@
 				</div>
 			</div>
 		</div>
+		<!-- bottom buttons row -->
 		<div class="flex flex-none flex-wrap lg:gap-x-2 gap-x-1">
 			<div class="sm:flex-1 flex-0" />
 			<div>

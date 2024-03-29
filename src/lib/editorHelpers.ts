@@ -2,7 +2,7 @@
 
 type Point = { x: number; y: number };
 
-
+//dilate SAM model output mask by a specified number of pixels for better results of inpainting
 export async function dilateMaskByPixels(
     dilationPixels: number,
     mask: boolean[][]
@@ -67,6 +67,7 @@ export async function dilateMaskByPixels(
     return dilatedMask;
 }
 
+//convert img data from mask canvas to binary mask
 export function maskArrayFromImgData(imageData: ImageData, canvasWidth: number, canvasHeight: number): boolean[][] {
     const maskArray: boolean[][] = [];
     for (let y = 0; y < canvasHeight; y++) {
@@ -74,14 +75,14 @@ export function maskArrayFromImgData(imageData: ImageData, canvasWidth: number, 
         for (let x = 0; x < canvasWidth; x++) {
             const index = (y * canvasWidth + x) * 4; //RGBA
             const alpha = imageData.data[index + 3]; // Alpha value indicates if the pixel is drawn to
-            row.push(alpha > 128); //mark as masked pixels with alpha > 128 (minimizes aliasing better than >0)
+            row.push(alpha > 128); 
         }
         maskArray.push(row);
     }
     return maskArray;
 }
 
-
+//download canvas data as png
 export function downloadImage(imageData: ImageData, imgName: string) {
     // Create a temporary canvas element
     const tempCanvas = document.createElement('canvas');
@@ -104,8 +105,6 @@ export function downloadImage(imageData: ImageData, imgName: string) {
         URL.revokeObjectURL(url);
     }, 'image/png');
 }
-
-
 
 export function clearCanvas(canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');

@@ -4,13 +4,19 @@
 
 	const dispatch = createEventDispatcher();
 	export let disabled: boolean = false;
-    export let currentZoomValue: number = 1;
-    export let panEnabled: boolean = false;
+	export let currentZoomValue: number = 1;
+	export let panEnabled: boolean = false;
 </script>
 
 <div class="btn-group variant-filled {disabled ? 'opacity-50 cursor-not-allowed' : ''}">
 	<div class="flex items-center justify-center {disabled ? 'cursor-not-allowed' : ''}">
-		<input type="checkbox" id="choose-me" class="peer hidden" {disabled} bind:checked={panEnabled} />
+		<input
+			type="checkbox"
+			id="choose-me"
+			class="peer hidden"
+			{disabled}
+			bind:checked={panEnabled}
+		/>
 
 		<label
 			for="choose-me"

@@ -40,6 +40,7 @@
 		}
 	];
 
+	//on user image upload, redirect to editor page and store img data to store
 	const handleImageUpload = async (event: Event) => {
 		const files = (event.target as HTMLInputElement).files;
 		let uploadedImageFile = files?.[0];
@@ -60,6 +61,7 @@
 		reader.readAsDataURL(uploadedImageFile);
 	};
 
+	//init worker
 	onMount(() => {
 		if (!$mainWorker) {
 			w = new Worker(new URL('./../workers/mainworker.worker.js', import.meta.url), {
