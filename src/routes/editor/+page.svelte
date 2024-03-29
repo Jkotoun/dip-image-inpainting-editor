@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { base } from '$app/paths';
+    import type { tool, brushMode, SAMMode } from "../../types/editorTypes";
 	import {
 		renderEditorState,
 		type editorState,
@@ -52,7 +53,7 @@
 	} from '@skeletonlabs/skeleton';
 	import { goto } from '$app/navigation';
 	import Navbar from '../../components/navbar.svelte';
-
+	import EditorToolSelection from '../../components/editorToolSelection.svelte';
 	let uploadedImage: string | null = null;
 	let headerHeightPx = 0;
 	let encoderLoading = true;
@@ -76,8 +77,7 @@
 	let maskCanvas: any;
 	let isPainting = false;
 	let originalImgElement: HTMLImageElement;
-	let pixelsDilatation = 10;
-
+	
 	//editor state management
 	let imgDataOriginal: ImageData;
 	let imgName: string = 'default';
@@ -86,17 +86,25 @@
 	//saved for potential redos after undo actions, emptied on new action after series of undos
 	let editorStatesUndoed: editorState[] = [];
 	//brush tool
-	let brushSize = 10;
 	let prevMouseX = 0;
 	let prevMouseY = 0;
 	let currentCanvasRelativeX = 0;
 	let currentCanvasRelativeY = 0;
-	let selectedBrushMode: 'brush' | 'eraser' = 'brush'; // Initial selected option
-	let selectedTool: tool = 'segment_anything';
 	let displayBrushCursor: boolean = false;
-	let selectedSAMMode: 'positive' | 'negative' = 'positive';
 	const drawerStore = getDrawerStore();
-	type tool = 'brush' | 'segment_anything';
+	
+	// export let selectedTool: tool = 'brush';
+    // export let selectedBrushMode: brushMode = 'brush';
+    // export let selectedSAMMode: SAMMode = 'positive';
+    // export let SAMMaskDilatation : number = 10;
+    // export let brushToolSize : number = 10;
+	
+	let SAMMaskDilatation: number;
+	let selectedBrushMode: brushMode; // Initial selected option
+	let selectedTool: tool;
+	let selectedSAMMode: SAMMode;
+	let brushToolSize: number;
+	$: handleBrushModeChange(selectedBrushMode, maskCanvas);
 
 	const currentCanvasCursor = (enablePan: boolean, selectedTool: tool) => {
 		if (enablePan === true) {
@@ -113,7 +121,7 @@
 	let currentZoom = 1;
 
 	// change dilatation when pixelsDilatation value changes
-	$: changeDilatation(pixelsDilatation, currentEditorState);
+	$: changeDilatation(SAMMaskDilatation, currentEditorState);
 
 	if ($mainWorker) {
 		$mainWorker.onmessage = handleWorkerModelsMessages;
@@ -136,7 +144,7 @@
 		if (type === MESSAGE_TYPES.DECODER_RUN_RESULT_SUCCESS && !decoderLoading) {
 			const SAMMaskArray = data.map((val: number[]) => val.map((v) => v > 0.0));
 			if (SAMMaskArray) {
-				dilateMaskByPixels(pixelsDilatation, SAMMaskArray).then((dilatedMask) => {
+				dilateMaskByPixels(SAMMaskDilatation, SAMMaskArray).then((dilatedMask) => {
 					currentEditorState.maskSAMDilated = dilatedMask;
 					currentEditorState.maskSAM = SAMMaskArray;
 					renderEditorState(currentEditorState, imageCanvas, maskCanvas, ImgResToCanvasSizeRatio);
@@ -454,7 +462,7 @@
 				y,
 				prevMouseX,
 				prevMouseY,
-				brushSize,
+				brushToolSize,
 				canvasCtx,
 				ImgResToCanvasSizeRatio
 			);
@@ -467,15 +475,16 @@
 		return canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height);
 	}
 
-	function handleBrushModeChange(event: any, maskCanvas: HTMLCanvasElement) {
-		selectedBrushMode = event.target.value;
+	function handleBrushModeChange(brushMode: 'brush' | 'eraser', maskCanvas: HTMLCanvasElement) {
 		// Get the canvas element
+		if(!maskCanvas || !brushMode) return;
 		const context = maskCanvas.getContext('2d');
 		if (!context) return;
 
-		context.globalCompositeOperation =
-			selectedBrushMode === 'brush' ? 'source-over' : 'destination-out';
+		context.globalCompositeOperation = brushMode === 'brush' ? 'source-over' : 'destination-out';
 	}
+
+
 	async function handleInpainting() {
 		if (!anythingEssentialLoading) {
 			inpaintingRunning = true;
@@ -515,74 +524,13 @@
 <Drawer>
 	<h2 class="p-4 font-semibold">Smart object remover</h2>
 	<hr />
-	<TabGroup>
-		<Tab
-			class="px-8 py-4"
-			bind:group={selectedTool}
-			name="segment_anything"
-			value="segment_anything"
-		>
-			<span class="flex gap-x-2 items-center"> <WandSparkles size={18} /> Smart selector</span>
-		</Tab>
-		<Tab class="px-8 py-4" bind:group={selectedTool} name="brush" value="brush">
-			<span class="flex gap-x-2 items-center"> <Brush size={18} /> Brush</span>
-		</Tab>
-
-		<div slot="panel" class="p-4">
-			{#if selectedTool === 'brush'}
-				<div>
-					<label for="brushtoolselect" class="font-semibold">Select tool:</label>
-					<div class="font-thin">
-						Select brush or eraser tool to mark the area you want to remove
-					</div>
-					<RadioGroup class="text-token mb-4" id="brushtoolselect">
-						<RadioItem
-							bind:group={selectedBrushMode}
-							on:change={(e) => handleBrushModeChange(e, maskCanvas)}
-							name="brushtool"
-							value="brush"
-						>
-							<Brush size={18} />
-						</RadioItem>
-						<RadioItem
-							bind:group={selectedBrushMode}
-							on:change={(e) => handleBrushModeChange(e, maskCanvas)}
-							name="brushtool"
-							value="eraser"
-						>
-							<Eraser size={18} />
-						</RadioItem>
-					</RadioGroup>
-
-					<label for="brushSize">Brush size: {brushSize}</label>
-					<input type="range" min="1" max="500" bind:value={brushSize} />
-				</div>
-			{:else if selectedTool === 'segment_anything'}
-				<label for="sammodeselect" class="font-semibold">Select smart selector mode:</label>
-				<div class="font-thin">
-					Add positive (adds area to selection) or negative (removes area from selection) points for
-					selection
-				</div>
-				<RadioGroup id="sammodeselect" class="text-token mb-4">
-					<RadioItem bind:group={selectedSAMMode} name="sammode" value="positive">
-						<PlusCircleIcon size={18} />
-					</RadioItem>
-					<RadioItem bind:group={selectedSAMMode} name="sammode" value="negative">
-						<MinusCircle size={18} />
-					</RadioItem>
-				</RadioGroup>
-				<label for="pixelsDilatation">Mask dilatation: {pixelsDilatation}</label>
-				<div class="font-thin">For best results, all edges of object should be inside the mask</div>
-				<input
-					type="range"
-					min="0"
-					max="25"
-					bind:value={pixelsDilatation}
-					on:change={(e) => console.log(e)}
-				/>
-			{/if}
-		</div>
-	</TabGroup>
+	<EditorToolSelection
+			bind:selectedTool={selectedTool}
+			bind:selectedBrushMode={selectedBrushMode}
+			bind:selectedSAMMode={selectedSAMMode}
+			bind:SAMMaskDilatation={SAMMaskDilatation}
+			bind:brushToolSize={brushToolSize}
+		/>
 </Drawer>
 
 <AppShell slotSidebarLeft="overflow-visible lg:w-80 w-0 h-screen shadow-md z-50">
@@ -598,70 +546,13 @@
 		/>
 	</svelte:fragment>
 	<svelte:fragment slot="sidebarLeft">
-		<TabGroup>
-			<Tab
-				class="px-8 py-4"
-				bind:group={selectedTool}
-				name="segment_anything"
-				value="segment_anything"
-			>
-				<span class="flex gap-x-2 items-center"> <WandSparkles size={18} /> Smart selector</span>
-			</Tab>
-			<Tab class="px-8 py-4" bind:group={selectedTool} name="brush" value="brush">
-				<span class="flex gap-x-2 items-center"> <Brush size={18} /> Brush</span>
-			</Tab>
-
-			<div slot="panel" class="p-4">
-				{#if selectedTool === 'brush'}
-					<div>
-						<label for="brushtoolselect" class="font-semibold">Select tool:</label>
-						<div class="font-thin">
-							Select brush or eraser tool to mark the area you want to remove
-						</div>
-						<RadioGroup class="text-token mb-4" id="brushtoolselect">
-							<RadioItem
-								bind:group={selectedBrushMode}
-								on:change={(e) => handleBrushModeChange(e, maskCanvas)}
-								name="brushtool"
-								value="brush"
-							>
-								<Brush size={18} />
-							</RadioItem>
-							<RadioItem
-								bind:group={selectedBrushMode}
-								on:change={(e) => handleBrushModeChange(e, maskCanvas)}
-								name="brushtool"
-								value="eraser"
-							>
-								<Eraser size={18} />
-							</RadioItem>
-						</RadioGroup>
-
-						<label for="brushSize">Brush size: {brushSize}</label>
-						<input type="range" min="1" max="500" bind:value={brushSize} />
-					</div>
-				{:else if selectedTool === 'segment_anything'}
-					<label for="sammodeselect" class="font-semibold">Select smart selector mode:</label>
-					<div class="font-thin">
-						Add positive (adds area to selection) or negative (removes area from selection) points
-						for selection
-					</div>
-					<RadioGroup id="sammodeselect" class="text-token mb-4">
-						<RadioItem bind:group={selectedSAMMode} name="sammode" value="positive">
-							<PlusCircleIcon size={18} />
-						</RadioItem>
-						<RadioItem bind:group={selectedSAMMode} name="sammode" value="negative">
-							<MinusCircle size={18} />
-						</RadioItem>
-					</RadioGroup>
-					<label for="pixelsDilatation">Mask dilatation: {pixelsDilatation}</label>
-					<div class="font-thin">
-						For best results, all edges of object should be inside the mask
-					</div>
-					<input type="range" min="0" max="25" bind:value={pixelsDilatation} />
-				{/if}
-			</div>
-		</TabGroup>
+		<EditorToolSelection
+			bind:selectedTool={selectedTool}
+			bind:selectedBrushMode={selectedBrushMode}
+			bind:selectedSAMMode={selectedSAMMode}
+			bind:SAMMaskDilatation={SAMMaskDilatation}
+			bind:brushToolSize={brushToolSize}
+		/>
 	</svelte:fragment>
 	<div
 		class="
@@ -778,8 +669,8 @@
 								role="group"
 								style="
 			display: {displayBrushCursor ? 'block' : 'none'};
-			width: {brushSize - 2}px;
-			height: {brushSize - 2}px;
+			width: {brushToolSize - 2}px;
+			height: {brushToolSize - 2}px;
 			left: {currentCanvasRelativeX}px;
 			top: {currentCanvasRelativeY}px;
 			background-color: {selectedBrushMode === 'brush' ? '#408dff' : '#f5f5f5'};

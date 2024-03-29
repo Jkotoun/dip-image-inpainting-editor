@@ -4,7 +4,6 @@
 </script>
 
 <Navbar
-	basepath={base}
 	navTitle={{ name: 'Smart Object Remover', href: base == '' ? '/' : base }}
 	links={[
 		{ name: 'Home', href: base == '' ? '/' : base },
