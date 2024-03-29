@@ -1,5 +1,6 @@
 import { clearCanvas } from "$lib/editorHelpers";
 import { booleanMaskToUint8Buffer, imgDataToRGBArray, reshapeBufferToNCHW, reshapeCHWtoHWC, type imgRGBData } from "$lib/onnxHelpers";
+import type { tool } from "../../types/editorTypes";
 import { MESSAGE_TYPES } from "../../workers/messageTypes";
 
 export interface SAMmarker {
@@ -15,11 +16,11 @@ export interface editorState {
     clickedPositions: SAMmarker[];
     imgData: ImageData;
     currentImgEmbedding:
-        | {
-                data: any;
-                dims: any;
-          }
-        | undefined;
+    | {
+        data: any;
+        dims: any;
+    }
+    | undefined;
 }
 
 export function drawImage(canvas: HTMLCanvasElement, imageData: ImageData) {
@@ -31,15 +32,18 @@ export async function renderEditorState(
     maskCanvas: HTMLCanvasElement,
     ImgResToCanvasSizeRatio: number
 ) {
-    clearCanvas(imageCanvas);
-    clearCanvas(maskCanvas);
-    drawImage(imageCanvas, state.imgData);
-    drawMarkers(imageCanvas,ImgResToCanvasSizeRatio, state.clickedPositions);
-    drawMask(imageCanvas, state.maskSAMDilated, 0.5, false);
-    drawMask(maskCanvas, state.maskBrush, 1, true);
+    return new Promise<void>((resolve) => {
+        clearCanvas(imageCanvas);
+        clearCanvas(maskCanvas);
+        drawImage(imageCanvas, state.imgData);
+        drawMarkers(imageCanvas, ImgResToCanvasSizeRatio, state.clickedPositions);
+        drawMask(imageCanvas, state.maskSAMDilated, 0.5, false);
+        drawMask(maskCanvas, state.maskBrush, 1, true);
+        resolve();
+    })
 }
 
-function drawMarkers(canvas: HTMLCanvasElement, ImgResToCanvasSizeRatio: number,  clickedPositions: SAMmarker[]) {
+function drawMarkers(canvas: HTMLCanvasElement, ImgResToCanvasSizeRatio: number, clickedPositions: SAMmarker[]) {
     const canvasContext = canvas.getContext('2d');
     if (!canvasContext) return;
     for (const pos of clickedPositions) {
@@ -223,3 +227,19 @@ export async function runModelEncoder(resizedImgData: imgRGBData, worker: Worker
         }
     });
 }
+
+export const currentCanvasCursor = (enablePan: boolean, selectedTool: tool) => {
+    if (enablePan === true) {
+        return 'move';
+    } else {
+        if (selectedTool === 'segment_anything') {
+            return 'default';
+        } else {
+            return 'none';
+        }
+    }
+};
+
+export const decoderResultToMaskArray = (decoderResult: number[][]) => {
+    return decoderResult.map((val: number[]) => val.map((v) => v > 0.0));
+};

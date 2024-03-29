@@ -1,6 +1,16 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { base } from '$app/paths';
+	import { goto } from '$app/navigation';
+	import Panzoom, { type PanzoomObject } from '@panzoom/panzoom';
+	import { WandSparkles, Undo, Redo, RotateCw, HardDriveDownload } from 'lucide-svelte';
+	import { AppShell, Drawer, getDrawerStore, ProgressRadial } from '@skeletonlabs/skeleton';
+	import { mainWorker } from '../../stores/workerStore';
+	import { MESSAGE_TYPES } from '../../workers/messageTypes';
+	import { uploadedImgBase64, uploadedImgFileName } from '../../stores/imgStore';
+	import Navbar from './../../components/Navbar.svelte';
+	import EditorToolSelection from './../../components/EditorToolSelection.svelte';
+	import PanzoomCanvasControls from '../../components/PanzoomCanvasControls.svelte';
 	import type { tool, brushMode, SAMMode } from '../../types/editorTypes';
 	import {
 		renderEditorState,
@@ -10,40 +20,20 @@
 		runInpainting,
 		createEmptyMaskArray,
 		createDecoderInputDict,
-		runModelEncoder
+		runModelEncoder,
+		RGB_CHW_array_to_imageData,
+		currentCanvasCursor,
+		decoderResultToMaskArray
 	} from './editorModule';
 	import { getResizedImgData } from '$lib/onnxHelpers';
-	import { RGB_CHW_array_to_imageData } from './editorModule';
 	import {
 		dilateMaskByPixels,
 		maskArrayFromImgData,
 		downloadImage,
 		clearCanvas
 	} from '$lib/editorHelpers';
-	import { uploadedImgBase64, uploadedImgFileName } from '../../stores/imgStore';
-	import { mainWorker } from '../../stores/workerStore';
-	import { MESSAGE_TYPES } from '../../workers/messageTypes';
-	import Panzoom, { type PanzoomObject } from '@panzoom/panzoom';
-	import {
-		WandSparkles,
-		Undo,
-		Redo,
-		RotateCw,
-		HardDriveDownload,
-	} from 'lucide-svelte';
-	import {
-		AppShell,
-		Drawer,
-		getDrawerStore,
-		ProgressRadial,
-	} from '@skeletonlabs/skeleton';
-	import { goto } from '$app/navigation';
-	import Navbar from './../../components/Navbar.svelte';
-	import EditorToolSelection from './../../components/EditorToolSelection.svelte';
-	import PanzoomCanvasControls from '../../components/PanzoomCanvasControls.svelte';
 
-	let gUploadedImage: string | null = null;
-	let gHeaderHeightPx = 0;
+	//models loading/processing state globals
 	let gEncoderLoading = true;
 	let gDecoderLoading = true;
 	let gInpainterLoading = true;
@@ -52,69 +42,64 @@
 	let gInpaintingRunning = false;
 	let gIsPainting = false;
 
-	//segmentation model constants
-	const gLongSideLength = 1024;
-	let gResizedImgWidth: number;
-	let gResizedImgHeight: number;
-
+	//general editor state globals
+	let gImgDataOriginal: ImageData;
+	let gImgName: string = 'default';
 	let gImgResToCanvasSizeRatio: number = 1;
+	let gCurrentEditorState: editorState;
+	let gEditorStatesHistory: editorState[] = [];
+	let gEditorStatesUndoed: editorState[] = [];
+
+	//element references/UI globals
 	let gImageCanvas: any;
 	let gCanvasesContainer: any;
 	let gMaskCanvas: any;
 	let gOriginalImgElement: HTMLImageElement;
-
-	//editor state management
-	let gImgDataOriginal: ImageData;
-	let gImgName: string = 'default';
-	let gCurrentEditorState: editorState;
-	let gEditorStatesHistory: editorState[] = [];
-	//saved for potential redos after undo actions, emptied on new action after series of undos
-	let gEditorStatesUndoed: editorState[] = [];
-	//brush tool
-	let gPrevMouseX = 0;
-	let gPrevMouseY = 0;
-	let gCurrentCanvasRelativeX = 0;
-	let gCurrentCanvasRelativeY = 0;
-	let gDisplayBrushCursor: boolean = false;
+	let gHeaderHeightPx = 0;
+	let gShowOriginalImage: boolean = false;
 	const drawerStore = getDrawerStore();
 
+	//SAM globals
+	let gResizedImgWidth: number;
+	let gResizedImgHeight: number;
+
+	//canvas brush drawing global
+	let gPrevMouseX = 0;
+	let gPrevMouseY = 0;
+	let gBrushOffsetX = 0;
+	let gBrushOffsetY = 0;
+	let gDisplayBrushCursor: boolean = false;
+
+	//sidebar controls globals
 	let gSAMMaskDilatation: number;
 	let gSelectedBrushMode: brushMode; // Initial selected option
 	let gSelectedTool: tool;
 	let gSelectedSAMMode: SAMMode;
 	let gBrushToolSize: number;
-	
+
+	//canvas panzoom globals
 	let gPanEnabled: boolean = false;
 	let gCurrentZoom: number = 1;
-	let gPanzoomObj: any;
-	let gShowOriginalImage: boolean = false;
-	
+	let gPanzoomObj: PanzoomObject;
+
 	$: handleBrushModeChange(gSelectedBrushMode, gMaskCanvas);
-	$: changeDilatation(gSAMMaskDilatation, gCurrentEditorState);
+	$: handleDilatationChange(gSAMMaskDilatation, gCurrentEditorState);
 	$: handlePanzoomSettingsChange(gPanEnabled, gAnythingEssentialLoading);
 	$: gAnythingEssentialLoading =
-		gInpaintingRunning || gEncoderLoading || gDecoderLoading || gIsEncoderRunning || gDecoderRunning;
-
-	const currentCanvasCursor = (enablePan: boolean, selectedTool: tool) => {
-		if (enablePan === true) {
-			return 'move';
-		} else {
-			if (selectedTool === 'segment_anything') {
-				return 'default';
-			} else {
-				return 'none';
-			}
-		}
-	};
-
-	// change dilatation when pixelsDilatation value changes
+		gInpaintingRunning ||
+		gEncoderLoading ||
+		gDecoderLoading ||
+		gIsEncoderRunning ||
+		gDecoderRunning;
 
 	if ($mainWorker) {
 		$mainWorker.onmessage = handleWorkerModelsMessages;
 	}
 
+	//resize img to longside 1024 and run encoder
 	const runEncoderCurrentState = async () => {
-		getResizedImgData(gCurrentEditorState.imgData, gLongSideLength).then((resizedImgRGBData) => {
+		const SAMLongside = 1024;
+		getResizedImgData(gCurrentEditorState.imgData, SAMLongside).then((resizedImgRGBData) => {
 			//set globals for decoder (needs to map input points to correct coordinates in resized image)
 			gResizedImgWidth = resizedImgRGBData.width;
 			gResizedImgHeight = resizedImgRGBData.height;
@@ -122,18 +107,25 @@
 		});
 	};
 
+	//NN models processing webworker incoming messages handling
 	function handleWorkerModelsMessages(event: MessageEvent<any>) {
 		const { data, type } = event.data;
 		if (type === MESSAGE_TYPES.INPAINTER_LOADED) {
 			gInpainterLoading = false;
 		}
 		if (type === MESSAGE_TYPES.DECODER_RUN_RESULT_SUCCESS && !gDecoderLoading) {
-			const SAMMaskArray = data.map((val: number[]) => val.map((v) => v > 0.0));
+			//map decoder result to 2D bool mask, dilate it and render new editor state
+			const SAMMaskArray: boolean[][] = decoderResultToMaskArray(data);
 			if (SAMMaskArray) {
 				dilateMaskByPixels(gSAMMaskDilatation, SAMMaskArray).then((dilatedMask) => {
 					gCurrentEditorState.maskSAMDilated = dilatedMask;
 					gCurrentEditorState.maskSAM = SAMMaskArray;
-					renderEditorState(gCurrentEditorState, gImageCanvas, gMaskCanvas, gImgResToCanvasSizeRatio);
+					renderEditorState(
+						gCurrentEditorState,
+						gImageCanvas,
+						gMaskCanvas,
+						gImgResToCanvasSizeRatio
+					);
 				});
 			}
 			gDecoderRunning = false;
@@ -144,13 +136,17 @@
 			};
 			gIsEncoderRunning = false;
 		} else if (type === MESSAGE_TYPES.INPAINTING_RUN_RESULT_SUCCESS && !gInpainterLoading) {
+			//convert CHW result array to imgData type and set new editor state + run encoder
 			RGB_CHW_array_to_imageData(data, gImageCanvas.height, gImageCanvas.width).then(
 				(resultImgData) => {
-					handleInpaintedImgData(resultImgData);
+					setInpaintedImgEditorState(resultImgData);
 					gInpaintingRunning = false;
+					gIsEncoderRunning = true;
+					runEncoderCurrentState();
 				}
 			);
 		} else if (type === MESSAGE_TYPES.ALL_MODELS_LOADED) {
+			//all models loaded - set globals and run encoder if img is ready
 			gDecoderLoading = gEncoderLoading = gInpainterLoading = false;
 			if (
 				gCurrentEditorState &&
@@ -162,6 +158,7 @@
 				runEncoderCurrentState();
 			}
 		} else if (type === MESSAGE_TYPES.ENCODER_DECODER_LOADED) {
+			//SAM loaded, run encoder if img is ready and load inpainter model then
 			gEncoderLoading = gDecoderLoading = false;
 			if (
 				gCurrentEditorState &&
@@ -177,36 +174,26 @@
 		}
 	}
 
+	//init editor state on editor page load
 	onMount(async () => {
 		let header = document.querySelector('header');
 		if (header) {
 			gHeaderHeightPx = header.getBoundingClientRect().height;
 		}
-		if ($uploadedImgBase64 === null || $uploadedImgFileName === '') {
-			goto(base == '' ? '/' : base);
-		}
-		gUploadedImage = $uploadedImgBase64;
+
 		window.addEventListener('resize', () => {
 			if (gImageCanvas) {
 				const canvasElementSize = gImageCanvas.getBoundingClientRect();
 				gImgResToCanvasSizeRatio = gImageCanvas.width / canvasElementSize.width;
 			}
 		});
-		if (!gUploadedImage || !uploadedImgFileName) {
+
+		if ($uploadedImgBase64 === null || $uploadedImgFileName === '' || !$mainWorker) {
 			goto(base == '' ? '/' : base);
 			return;
 		}
-		gCurrentEditorState = await initEditorState(gUploadedImage, $uploadedImgFileName);
 
-		if (!$mainWorker) {
-			goto(base == '' ? '/' : base);
-		} else {
-			/*mainworker has set modelsLoaded function callback (setups editor etc.)
-			it is called either based on response to this message or after models are loaded 
-			(then, the message is sent automatically after loading)*/
-			$mainWorker.postMessage({ type: MESSAGE_TYPES.CHECK_MODELS_LOADING_STATE });
-		}
-
+		gCurrentEditorState = await initEditorState($uploadedImgBase64, $uploadedImgFileName);
 		gPanzoomObj = Panzoom(gCanvasesContainer, {
 			disablePan: !gPanEnabled,
 			minScale: 1,
@@ -218,12 +205,12 @@
 		gCanvasesContainer.addEventListener('panzoomchange', (event: any) => {
 			gCurrentZoom = event.detail.scale;
 		});
-		setTimeout(() => gPanzoomObj.zoom(0, 100));
-		gPanzoomObj.zoom(5, { animate: true });
+
+		$mainWorker.postMessage({ type: MESSAGE_TYPES.CHECK_MODELS_LOADING_STATE });
 	});
 
 	//change dilatation when pixelsDilatation value changes
-	async function changeDilatation(pixelsDilatation: number, currentEditorState: editorState) {
+	async function handleDilatationChange(pixelsDilatation: number, currentEditorState: editorState) {
 		if (currentEditorState) {
 			currentEditorState.maskSAMDilated = await dilateMaskByPixels(
 				pixelsDilatation,
@@ -236,21 +223,17 @@
 	//initializes editor state on new image
 	const initEditorState = async (sourceImgBase64Data: string, sourceImgName: string) => {
 		return new Promise<editorState>((resolve, reject) => {
+			gImgName = sourceImgName;
 			const img = new Image();
 			img.src = sourceImgBase64Data;
-			gImgName = sourceImgName;
 			img.onload = async () => {
 				// Calculate aspect ratio
-				gImageCanvas.width = img.width;
-				gMaskCanvas.width = img.width;
-				gImageCanvas.height = img.height;
-				gMaskCanvas.height = img.height;
-				const canvasElementSize = gImageCanvas.getBoundingClientRect();
-				gImgResToCanvasSizeRatio = img.width / canvasElementSize.width;
+				gImageCanvas.width = gMaskCanvas.width = img.width;
+				gImageCanvas.height = gMaskCanvas.height = img.height;
+				gImgResToCanvasSizeRatio = img.width / gImageCanvas.getBoundingClientRect().width;
 
 				//render image
 				const ctx = gImageCanvas.getContext('2d');
-				clearCanvas(gImageCanvas);
 				ctx.drawImage(
 					img,
 					0,
@@ -262,20 +245,19 @@
 					gImageCanvas.width,
 					gImageCanvas.height
 				);
-
 				gImgDataOriginal = getImageData(gImageCanvas);
+
 				//setup editor state
 				gEditorStatesHistory = [];
 				gEditorStatesUndoed = [];
-				let newEditorState = {
+				resolve({
 					maskBrush: createEmptyMaskArray(gImgDataOriginal.width, gImgDataOriginal.height),
 					maskSAM: createEmptyMaskArray(gImgDataOriginal.width, gImgDataOriginal.height),
 					maskSAMDilated: createEmptyMaskArray(gImgDataOriginal.width, gImgDataOriginal.height),
 					clickedPositions: new Array<SAMmarker>(),
 					imgData: gImgDataOriginal,
 					currentImgEmbedding: undefined
-				} as editorState;
-				resolve(newEditorState);
+				} as editorState);
 			};
 
 			img.onerror = (error) => {
@@ -285,36 +267,28 @@
 	};
 
 	//post message with decoder input dict to webworker
-	const runDecoderCurrentState = async () => {
-		if (!gCurrentEditorState.currentImgEmbedding) {
-			return;
-		}
-		gDecoderRunning = true;
-		const modelInput = await createDecoderInputDict(
-			gCurrentEditorState,
-			gResizedImgWidth,
-			gResizedImgHeight
-		);
-		$mainWorker?.postMessage({
-			type: MESSAGE_TYPES.DECODER_RUN,
-			data: modelInput
-		});
-	};
 
 	async function handleCanvasClick(event: MouseEvent) {
-		console.log('canvas log');
-		console.log(gImageCanvas.getBoundingClientRect().width);
+		const runDecoderCurrentState = async () => {
+			if (!gCurrentEditorState.currentImgEmbedding) {
+				return;
+			}
+			gDecoderRunning = true;
+			const modelInput = await createDecoderInputDict(
+				gCurrentEditorState,
+				gResizedImgWidth,
+				gResizedImgHeight
+			);
+			$mainWorker?.postMessage({
+				type: MESSAGE_TYPES.DECODER_RUN,
+				data: modelInput
+			});
+		};
+
 		if (gAnythingEssentialLoading) {
 			return;
 		}
-		//it logs -0 at 0,0 for some reason
 		event.preventDefault();
-		const xScaled = Math.abs(event.offsetX) * gImgResToCanvasSizeRatio;
-		const yScaled = Math.abs(event.offsetY) * gImgResToCanvasSizeRatio;
-
-		console.log(event.offsetX, event.offsetY);
-		console.log('scaled');
-		console.log(xScaled, yScaled);
 
 		gEditorStatesHistory = [...gEditorStatesHistory, gCurrentEditorState];
 		gCurrentEditorState = {
@@ -322,14 +296,13 @@
 			maskSAM: gCurrentEditorState.maskSAM,
 			maskSAMDilated: gCurrentEditorState.maskSAMDilated,
 			clickedPositions: new Array<SAMmarker>(...gCurrentEditorState.clickedPositions, {
-				x: xScaled,
-				y: yScaled,
-				// type: event.button === 0 ? 'positive' : 'negative'
+				x: Math.abs(event.offsetX) * gImgResToCanvasSizeRatio, // for [0,0] it is sometimes -0
+				y: Math.abs(event.offsetY) * gImgResToCanvasSizeRatio,
 				type: gSelectedSAMMode
 			}),
 			imgData: gCurrentEditorState.imgData,
 			currentImgEmbedding: gCurrentEditorState.currentImgEmbedding
-		} as editorState;
+		};
 		renderEditorState(gCurrentEditorState, gImageCanvas, gMaskCanvas, gImgResToCanvasSizeRatio);
 		runDecoderCurrentState();
 	}
@@ -373,24 +346,18 @@
 	}
 
 	// brush tool
-	function startPaintingMouse(event: MouseEvent, canvas: HTMLCanvasElement) {
+	function startPainting(event: MouseEvent | TouchEvent, canvas: HTMLCanvasElement) {
 		gIsPainting = true;
-		gPrevMouseX = event.offsetX * gImgResToCanvasSizeRatio;
-		gPrevMouseY = event.offsetY * gImgResToCanvasSizeRatio;
+		if (event instanceof MouseEvent) {
+			gPrevMouseX = event.offsetX * gImgResToCanvasSizeRatio;
+			gPrevMouseY = event.offsetY * gImgResToCanvasSizeRatio;
+		} else {
+			let touch = event.touches[0]; // Get the first touch, you might handle multi-touch differently
+			gPrevMouseX =
+				(touch.clientX - canvas.getBoundingClientRect().left) * gImgResToCanvasSizeRatio;
+			gPrevMouseY = (touch.clientY - canvas.getBoundingClientRect().top) * gImgResToCanvasSizeRatio;
+		}
 		handleEditorCursorMove(event, canvas);
-	}
-	function startPaintingTouch(event: TouchEvent, canvas: HTMLCanvasElement) {
-		gIsPainting = true;
-
-		let touch = event.touches[0]; // Get the first touch, you might handle multi-touch differently
-		let targetRect = canvas.getBoundingClientRect(); // Get the target element's position
-
-		// Calculate offsetX and offsetY
-		let offsetX = touch.clientX - targetRect.left;
-		let offsetY = touch.clientY - targetRect.top;
-
-		gPrevMouseX = offsetX * gImgResToCanvasSizeRatio;
-		gPrevMouseY = offsetY * gImgResToCanvasSizeRatio;
 	}
 
 	function stopPainting() {
@@ -408,14 +375,7 @@
 		);
 		//new state management
 		gEditorStatesHistory = [...gEditorStatesHistory, gCurrentEditorState];
-		gCurrentEditorState = {
-			maskBrush: maskArray,
-			maskSAM: gCurrentEditorState.maskSAM,
-			maskSAMDilated: gCurrentEditorState.maskSAMDilated,
-			clickedPositions: gCurrentEditorState.clickedPositions,
-			imgData: gCurrentEditorState.imgData,
-			currentImgEmbedding: gCurrentEditorState.currentImgEmbedding
-		} as editorState;
+		gCurrentEditorState = { ...gCurrentEditorState, maskBrush: maskArray };
 		gEditorStatesUndoed = [];
 	}
 	function handleEditorCursorMove(event: MouseEvent | TouchEvent, canvas: HTMLCanvasElement) {
@@ -423,19 +383,18 @@
 		if (event instanceof MouseEvent) {
 			x = event.offsetX * gImgResToCanvasSizeRatio;
 			y = event.offsetY * gImgResToCanvasSizeRatio;
-			gCurrentCanvasRelativeX = event.offsetX;
-			gCurrentCanvasRelativeY = event.offsetY;
+			gBrushOffsetX = event.offsetX;
+			gBrushOffsetY = event.offsetY;
 		} else {
 			let touch = event.touches[0]; // Get the first touch, you might handle multi-touch differently
 			let targetRect = canvas.getBoundingClientRect(); // Get the target element's position
-
 			// Calculate offsetX and offsetY
 			let offsetX = touch.clientX - targetRect.left;
 			let offsetY = touch.clientY - targetRect.top;
 			x = offsetX * gImgResToCanvasSizeRatio;
 			y = offsetY * gImgResToCanvasSizeRatio;
-			gCurrentCanvasRelativeX = offsetX;
-			gCurrentCanvasRelativeY = offsetY;
+			gBrushOffsetX = offsetX;
+			gBrushOffsetY = offsetY;
 		}
 		if (gIsPainting) {
 			let canvasCtx = canvas.getContext('2d', { willReadFrequently: true });
@@ -478,7 +437,7 @@
 	}
 
 	//handle inpainted image data - set and render new editor state and run encoder on new image
-	async function handleInpaintedImgData(inpaintedImgData: ImageData) {
+	async function setInpaintedImgEditorState(inpaintedImgData: ImageData) {
 		gEditorStatesHistory = [...gEditorStatesHistory, gCurrentEditorState];
 		let newEditorState: editorState = {
 			maskBrush: createEmptyMaskArray(gImgDataOriginal.width, gImgDataOriginal.height),
@@ -489,9 +448,12 @@
 			currentImgEmbedding: undefined
 		};
 		gCurrentEditorState = newEditorState;
-		renderEditorState(gCurrentEditorState, gImageCanvas, gMaskCanvas, gImgResToCanvasSizeRatio);
-		gIsEncoderRunning = true;
-		runEncoderCurrentState();
+		return renderEditorState(
+			gCurrentEditorState,
+			gImageCanvas,
+			gMaskCanvas,
+			gImgResToCanvasSizeRatio
+		);
 	}
 
 	function handlePanzoomSettingsChange(enablePan: boolean, anythingEssentialLoading: boolean) {
@@ -502,7 +464,6 @@
 			});
 		}
 	}
-
 </script>
 
 <Drawer>
@@ -539,33 +500,32 @@
 		/>
 	</svelte:fragment>
 	<div
-		class="
-	flex flex-col gap-y-4
-	2xl:px-64 xl:px-16 md:px-8 px-2 py-4
-	"
+		class="flex flex-col gap-y-4 2xl:px-64 xl:px-16 md:px-8 px-2 py-4"
 		style="max-height: calc(100vh - {gHeaderHeightPx}px)"
 	>
-		<!-- top buttons panel -->
 		<div class="flex flex-none justify-between">
-			<!-- left buttons -->
 			<div class="flex lg:gap-x-2 gap-x-1">
 				<button
 					class="btn btn-sm lg:btn-md variant-filled"
 					on:click={undoLastEditorAction}
 					disabled={gEditorStatesHistory.length === 0 || gAnythingEssentialLoading}
-					><Undo class="lg:w-6 lg:h-6 w-4 h-4" /></button
 				>
+					<Undo class="lg:w-6 lg:h-6 w-4 h-4" />
+				</button>
 				<button
 					class="btn btn-sm lg:btn-md variant-filled"
 					on:click={redoLastEditorAction}
 					disabled={gEditorStatesUndoed.length === 0 || gAnythingEssentialLoading}
-					><Redo class="lg:w-6 lg:h-6 w-4 h-4" /></button
 				>
+					<Redo class="lg:w-6 lg:h-6 w-4 h-4" />
+				</button>
 				<button
 					disabled={gAnythingEssentialLoading}
 					class="btn btn-sm lg:btn-md variant-filled"
-					on:click={resetEditorState}><RotateCw class="lg:w-6 lg:h-6 w-4 h-4" /></button
+					on:click={resetEditorState}
 				>
+					<RotateCw class="lg:w-6 lg:h-6 w-4 h-4" />
+				</button>
 			</div>
 
 			<!-- right buttons -->
@@ -586,8 +546,8 @@
 						gShowOriginalImage = false;
 					}}
 				>
-					<span class="hidden sm:inline no-margin">Hold to compare</span>
-					<span class="no-margin sm:hidden">Compare</span>
+					<span class="hidden sm:inline inset-0 ">Hold to compare</span>
+					<span class="sm:hidden inset-0">Compare</span>
 				</button>
 
 				<button
@@ -601,10 +561,9 @@
 				</button>
 			</div>
 		</div>
-		<!-- editor canvases-->
 		<div
 			id="mainEditorContainer"
-			class="grow overflow-hidden"
+			class="grow overflow-hidden relative flex justify-center"
 			style="cursor: {gAnythingEssentialLoading ? 'not-allowed' : 'default'}"
 		>
 			<div
@@ -628,7 +587,6 @@
 			<div class="canvases w-full" bind:this={gCanvasesContainer}>
 				<div class="relative !h-full !w-full flex justify-center" role="group">
 					<div class="flex-none" />
-					<!-- default width so the page isnt empty till load -->
 					<div
 						class="relative flex-none shrink"
 						style="cursor: {currentCanvasCursor(gPanEnabled, gSelectedTool)}"
@@ -645,20 +603,23 @@
 							<div
 								id="brushToolCursor"
 								role="group"
-								class={gDisplayBrushCursor ? 'block' : 'hidden'}
+								class="
+								overflow-hidden absolute rounded-full pointer-events-none z-50
+								{gDisplayBrushCursor ? 'block' : 'hidden'}"
 								style="
-			width: {gBrushToolSize - 2}px;
-			height: {gBrushToolSize - 2}px;
-			left: {gCurrentCanvasRelativeX}px;
-			top: {gCurrentCanvasRelativeY}px;
-			background-color: {gSelectedBrushMode === 'brush' ? '#408dff' : '#f5f5f5'};
-			border: 1px solid {gSelectedBrushMode === 'brush' ? '#0261ed' : '#bfbfbf'};
-			opacity: {gIsPainting ? 0.6 : 0.5};
-		"
+									transform: translate(-50%, -50%);
+									width: {gBrushToolSize - 2}px;
+									height: {gBrushToolSize - 2}px;
+									left: {gBrushOffsetX}px;
+									top: {gBrushOffsetY}px;
+									background-color: {gSelectedBrushMode === 'brush' ? '#408dff' : '#f5f5f5'};
+									border: 1px solid {gSelectedBrushMode === 'brush' ? '#0261ed' : '#bfbfbf'};
+									opacity: {gIsPainting ? 0.6 : 0.5};
+									"
 							/>
 						</div>
 						<canvas
-							class="shadow-lg
+							class="shadow-lg inset-0 w-full h-full
 						{gAnythingEssentialLoading ? 'opacity-30 cursor-not-allowed' : ''} 
 						{gShowOriginalImage === true ? '!hidden' : '!block'}
 						
@@ -669,63 +630,37 @@
 
 						<canvas
 							id="maskCanvas"
-							class="
+							class=" inset-0 w-full h-full absolute opacity-50
 						{gPanEnabled ? '' : 'panzoom-exclude'} 
 						{gAnythingEssentialLoading ? 'opacity-30 cursor-not-allowed' : ''}
 						{gShowOriginalImage ? '!hidden' : '!block'}
 						"
 							bind:this={gMaskCanvas}
 							on:mousedown={gSelectedTool === 'brush' && !gPanEnabled
-								? (e) => startPaintingMouse(e, gMaskCanvas)
+								? (e) => startPainting(e, gMaskCanvas)
 								: undefined}
 							on:mouseup={gSelectedTool === 'brush' && !gPanEnabled ? stopPainting : undefined}
 							on:mousemove={(event) =>
 								gSelectedTool === 'brush' && !gPanEnabled
 									? handleEditorCursorMove(event, gMaskCanvas)
 									: undefined}
-							on:touchstart={gSelectedTool === 'brush'
-								? // && !enablePan
-								  (e) => {
-										console.log('start');
-										console.log(e);
-										if (e.touches.length === 1) {
-											startPaintingTouch(e, gMaskCanvas);
-										} else {
-											stopPainting();
-										}
+							on:touchstart={gSelectedTool === 'brush' && !gPanEnabled
+								? (e) => startPainting(e, gMaskCanvas)
+								: undefined}
+							on:touchend={gSelectedTool === 'brush' && !gPanEnabled ? stopPainting : undefined}
+							on:touchmove={gSelectedTool === 'brush' && !gPanEnabled
+								? (e) => {
+										e.preventDefault();
+										handleEditorCursorMove(e, gMaskCanvas);
 								  }
 								: undefined}
-							on:touchend={gSelectedTool === 'brush'
-								? // &&  !enablePan
-								  (e) => {
-										console.log('end');
-										console.log(e);
-										stopPainting();
-								  }
-								: undefined}
-							on:touchmove={gSelectedTool === 'brush'
-								? // &&  !enablePan
-								  (e) => {
-										if (e.touches.length === 1) {
-											e.preventDefault();
-											handleEditorCursorMove(e, gMaskCanvas);
-										}
-								  }
-								: undefined}
-							on:click={gSelectedTool === 'segment_anything' && !gPanEnabled
-								? async (e) => {
-										console.log(e);
-										handleCanvasClick(e);
-								  }
-								: undefined}
+							on:click={gSelectedTool === 'segment_anything' && !gPanEnabled ? handleCanvasClick: undefined}
 						/>
 
 						<img
-							class="shadow-lg
-						{gAnythingEssentialLoading ? 'opacity-50 cursor-not-allowed' : ''}
-						{gShowOriginalImage === true ? '!block' : '!hidden'}
-
-						"
+							class="shadow-lg inset-0 w-full h-full
+								{gAnythingEssentialLoading ? 'opacity-50 cursor-not-allowed' : ''}
+								{gShowOriginalImage === true ? '!block' : '!hidden'}"
 							src={$uploadedImgBase64}
 							alt="originalImage"
 							bind:this={gOriginalImgElement}
@@ -735,7 +670,6 @@
 				</div>
 			</div>
 		</div>
-		<!-- bottom buttons -->
 		<div class="flex flex-none flex-wrap lg:gap-x-2 gap-x-1">
 			<div class="sm:flex-1 flex-0" />
 			<div>
@@ -743,16 +677,16 @@
 					disabled={gAnythingEssentialLoading}
 					currentZoomValue={gCurrentZoom}
 					bind:panEnabled={gPanEnabled}
-					on:zoomIn={() => gPanzoomObj.zoomIn()}
-					on:zoomOut={() => gPanzoomObj.zoomOut()}
-					on:zoomReset={() => gPanzoomObj.reset()}
+					on:zoomIn={gPanzoomObj.zoomIn}
+					on:zoomOut={gPanzoomObj.zoomOut}
+					on:zoomReset={gPanzoomObj.reset}
 				/>
 			</div>
 			<div class="flex-1 flex justify-end">
 				<button
 					class="btn lg:btn-xl md:btn-md btn-sm variant-filled-primary text-white dark:text-white font-semibold"
 					disabled={gAnythingEssentialLoading || gInpainterLoading}
-					on:click={async () => handleInpainting()}
+					on:click={handleInpainting}
 				>
 					<span class="flex gap-x-2 items-center">
 						{#if gInpainterLoading && !gAnythingEssentialLoading}
@@ -773,39 +707,3 @@
 		</div>
 	</div>
 </AppShell>
-
-<style>
-	.canvases canvas,
-	.canvases img {
-		inset: 0;
-		display: block;
-		width: 100%;
-		height: 100%;
-	}
-
-	.canvases #maskCanvas {
-		position: absolute;
-	}
-	.canvases #maskCanvas {
-		opacity: 0.5;
-	}
-	#mainEditorContainer {
-		position: relative;
-		display: flex;
-		justify-content: center;
-	}
-	#brushToolCursor {
-		position: absolute;
-		overflow: hidden;
-		border-radius: 50%;
-		pointer-events: none;
-		z-index: 100;
-		transform: translate(-50%, -50%);
-	}
-	.canvases img {
-		display: none;
-	}
-	.no-margin {
-		margin: 0 !important;
-	}
-</style>
