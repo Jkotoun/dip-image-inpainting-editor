@@ -52,8 +52,8 @@
 		TabGroup
 	} from '@skeletonlabs/skeleton';
 	import { goto } from '$app/navigation';
-	import Navbar from '../../components/navbar.svelte';
-	import EditorToolSelection from '../../components/editorToolSelection.svelte';
+	import Navbar from '../../components/Navbar.svelte';
+	import EditorToolSelection from '../../components/EditorToolSelection.svelte';
 	let uploadedImage: string | null = null;
 	let headerHeightPx = 0;
 	let encoderLoading = true;
