@@ -1,14 +1,14 @@
 <script lang="ts">
-	import { writable } from 'svelte/store';
 	//   import { goto } from '@sveltejs/kit';
 	import { goto } from '$app/navigation';
 	import { uploadedImgBase64, uploadedImgFileName } from '../stores/imgStore';
 	import { mainWorker } from '../stores/workerStore';
-	import { AppBar, AppShell, FileDropzone, LightSwitch } from '@skeletonlabs/skeleton';
+	import { AppShell, FileDropzone} from '@skeletonlabs/skeleton';
 	import { FileUp } from 'lucide-svelte';
 	import { onMount } from 'svelte';
-	import {base} from '$app/paths';
+	import { base } from '$app/paths';
 	import { MESSAGE_TYPES } from '../workers/messageTypes';
+	import Navbar from '../components/navbar.svelte';
 
 	interface cardProps {
 		title: string;
@@ -61,12 +61,17 @@
 	};
 
 	onMount(() => {
-		if(!$mainWorker){
-			w = new Worker(new URL('./../workers/mainworker.worker.js', import.meta.url) , { type: "module" });
-			w.postMessage({ type: MESSAGE_TYPES.INIT, data:{
-				env: process.env.NODE_ENV,
-				appBasePath: base
-			} });
+		if (!$mainWorker) {
+			w = new Worker(new URL('./../workers/mainworker.worker.js', import.meta.url), {
+				type: 'module'
+			});
+			w.postMessage({
+				type: MESSAGE_TYPES.INIT,
+				data: {
+					env: process.env.NODE_ENV,
+					appBasePath: base
+				}
+			});
 			mainWorker.set(w);
 		}
 	});
@@ -74,16 +79,14 @@
 
 <AppShell>
 	<svelte:fragment slot="header">
-		<AppBar>
-			<svelte:fragment slot="lead">
-				<a href={base == '' ? '/' : base} class="font-bold">Smart Object remover</a>
-			</svelte:fragment>
-			<svelte:fragment slot="trail">
-				<a href={base == '' ? '/' : base} class="font-semibold">Home</a>
-				<a href="{base}/about" class="font-semibold">About</a>
-				<LightSwitch />
-			</svelte:fragment>
-		</AppBar>
+		<Navbar
+			basepath={base}
+			navTitle={{ name: 'Smart Object Remover', href: base == '' ? '/' : base }}
+			links={[
+				{ name: 'Home', href: base == '' ? '/' : base },
+				{ name: 'About', href: `${base}/about` }
+			]}
+		/>
 	</svelte:fragment>
 
 	<div>

@@ -588,7 +588,6 @@
 <AppShell slotSidebarLeft="overflow-visible lg:w-80 w-0 h-screen shadow-md z-50">
 	<svelte:fragment slot="header">
 		<Navbar
-			basepath={base}
 			navTitle={{ name: 'Smart Object Remover', href: base == '' ? '/' : base }}
 			links={[
 				{ name: 'Home', href: base == '' ? '/' : base },

@@ -2,7 +2,6 @@
 	import { AppBar, LightSwitch } from '@skeletonlabs/skeleton';
 	import { createEventDispatcher } from 'svelte';
 	const dispatch = createEventDispatcher();
-	export let basepath: string;
 	export let drawerMenu: boolean = false;
 	export let navTitle: { name: string; href?: string };
 	export let links: { name: string; href: string }[] = [];
