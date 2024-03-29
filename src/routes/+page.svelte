@@ -1,14 +1,14 @@
 <script lang="ts">
-	//   import { goto } from '@sveltejs/kit';
 	import { goto } from '$app/navigation';
 	import { uploadedImgBase64, uploadedImgFileName } from '../stores/imgStore';
 	import { mainWorker } from '../stores/workerStore';
-	import { AppShell, FileDropzone} from '@skeletonlabs/skeleton';
+	import { AppShell, FileDropzone } from '@skeletonlabs/skeleton';
 	import { FileUp } from 'lucide-svelte';
 	import { onMount } from 'svelte';
 	import { base } from '$app/paths';
 	import { MESSAGE_TYPES } from '../workers/messageTypes';
 	import Navbar from './../components/Navbar.svelte';
+	import EditStepCard from '../components/EditStepCard.svelte';
 
 	interface cardProps {
 		title: string;
@@ -81,10 +81,7 @@
 	<svelte:fragment slot="header">
 		<Navbar
 			navTitle={{ name: 'Smart Object Remover', href: base == '' ? '/' : base }}
-			links={[
-				{ name: 'Home', href: base == '' ? '/' : base },
-				{ name: 'About', href: `${base}/about` }
-			]}
+			links={[{ name: 'Home', href: base == '' ? '/' : base }]}
 		/>
 	</svelte:fragment>
 
@@ -117,26 +114,10 @@
 			</div>
 
 			<h2 class="h2 md:pt-16 md:pb-16 pt-8 pb-8 text-center font-semibold">How does it work?</h2>
-			<div class="">
-				<div class="w-fit text-token grid grid-cols-1 xl:grid-cols-4 md:grid-cols-2 gap-4">
-					{#each cards as card}
-						<div class="card overflow-hidden">
-							<header>
-								<img
-									src={card.image}
-									class="bg-black/50 w-full h-64 object-cover"
-									alt="Object removal process guide"
-								/>
-							</header>
-							<div class="p-8 space-y-4">
-								<h3 class="h3 font-semibold">{card.title}</h3>
-								<article>
-									<p>{card.description}</p>
-								</article>
-							</div>
-						</div>
-					{/each}
-				</div>
+			<div class="w-fit text-token grid grid-cols-1 xl:grid-cols-4 md:grid-cols-2 gap-4">
+				{#each cards as card}
+					<EditStepCard title={card.title} description={card.description} imgSrc={card.image} />
+				{/each}
 			</div>
 		</div>
 	</div>

@@ -484,7 +484,6 @@
 			navTitle={{ name: 'Smart Object Remover', href: base == '' ? '/' : base }}
 			links={[
 				{ name: 'Home', href: base == '' ? '/' : base },
-				{ name: 'About', href: `${base}/about` }
 			]}
 			drawerMenu
 			on:openDrawerMenu={() => drawerStore.open({})}
