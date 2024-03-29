@@ -1,5 +1,5 @@
 <script>
-	import Navbar from '../../components/navbar.svelte';
+	import Navbar from './../../components/Navbar.svelte';
 	import { base } from '$app/paths';
 </script>
 

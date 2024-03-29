@@ -8,7 +8,7 @@
 	import { onMount } from 'svelte';
 	import { base } from '$app/paths';
 	import { MESSAGE_TYPES } from '../workers/messageTypes';
-	import Navbar from '../components/navbar.svelte';
+	import Navbar from './../components/Navbar.svelte';
 
 	interface cardProps {
 		title: string;
