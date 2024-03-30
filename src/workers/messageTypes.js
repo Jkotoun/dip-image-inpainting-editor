@@ -15,6 +15,4 @@ export const MESSAGE_TYPES = {
     INPAINTING_RUN: 'inpainterRun',
     INPAINTING_RUN_RESULT_SUCCESS: 'inpainterRunResultSuccess',
     INPAINTING_RUN_RESULT_FAILURE: 'inpainterRunResultFailure',
-    
-
 }

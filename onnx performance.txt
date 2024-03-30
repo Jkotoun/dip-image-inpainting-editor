@@ -1,8 +1,0 @@
-WEBGPU
-1. run - encoder -2.7s, inpainter - 2s , decoder - 0.8s
-next runs - encoder - 2s, inpainter - 1.8s, decoder - 0.58s
-
-
-WASM
-1. run - encoder - 4.2s inpainter - 2.6s decoder - 0.26s
-next runs - encoder - 4.2s, inptainer - 2.5s, decoder - 0.25s
