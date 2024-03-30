@@ -23,6 +23,10 @@ export interface editorState {
     | undefined;
 }
 
+export function drawImage(canvas: HTMLCanvasElement, imageData: ImageData) {
+    canvas.getContext('2d')!.putImageData(imageData, 0, 0);
+}
+
 //renders editor state - draw image, mask from both brush and SAM and markers on clicked positions
 export async function renderEditorState(
     state: editorState,
@@ -33,14 +37,13 @@ export async function renderEditorState(
     return new Promise<void>((resolve) => {
         clearCanvas(imageCanvas);
         clearCanvas(maskCanvas);
-        maskCanvas.getContext('2d')!.putImageData(state.imgData, 0, 0);
+        drawImage(imageCanvas, state.imgData);
         drawMarkers(imageCanvas, ImgResToCanvasSizeRatio, state.clickedPositions);
         drawMask(imageCanvas, state.maskSAMDilated, 0.5, false);
         drawMask(maskCanvas, state.maskBrush, 1, true);
         resolve();
     })
 }
-
 //draw smart selector tool markers on clicked positions 
 function drawMarkers(canvas: HTMLCanvasElement, ImgResToCanvasSizeRatio: number, clickedPositions: SAMmarker[]) {
     const canvasContext = canvas.getContext('2d');
