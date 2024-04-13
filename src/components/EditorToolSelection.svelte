@@ -16,8 +16,9 @@
 	<Tab class="px-8 py-4" bind:group={selectedTool} name="brush" value="brush">
 		<span class="flex gap-x-2 items-center"> <Brush size={18} /> Brush</span>
 	</Tab>
+	
+	<div slot="panel" class="px-4 py-2">
 
-	<div slot="panel" class="p-4">
 		{#if selectedTool === 'brush'}
 			<div>
 				<label for="brushtoolselect" class="font-semibold">Select tool:</label>
@@ -35,6 +36,7 @@
 				<input type="range" min="1" max="500" bind:value={brushToolSize} />
 			</div>
 		{:else if selectedTool === 'segment_anything'}
+
 			<label for="sammodeselect" class="font-semibold">Select smart selector mode:</label>
 			<div class="font-thin">
 				Add positive (adds area to selection) or negative (removes area from selection) points for
@@ -49,9 +51,10 @@
 				</RadioItem>
 			</RadioGroup>
 			<label for="pixelsDilatation">Mask dilatation: {SAMMaskDilatation}</label>
-			<div class="font-thin">For best results, all edges of object should be inside the mask</div>
 			<input type="range" min="0" max="25" bind:value={SAMMaskDilatation} />
 		{/if}
+		<div class="font-thin text-sm py-3">Tip: For best results, selected area should contain all edges and shadows of the object.</div>
+
 	</div>
 </TabGroup>
 

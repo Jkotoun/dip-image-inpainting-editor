@@ -25,7 +25,9 @@
 		{
 			title: 'Step 2: Select area you want to remove using smart selector tool or brush',
 			description:
-				'Specify one or more points of the object you want to select using smart selector tool. Alternatively, use a brush tool to select the whole area, or to refine area selected by smart selector.',
+				'Specify one or more points of the object you want to select using smart selector tool. \
+				Alternatively, use a brush tool to select the whole area, or to refine area selected by smart selector. \
+				For best results, selected area should contain all edges and shadows of the object',
 			image: `${base}/img/process_part2.png`
 		},
 		{
