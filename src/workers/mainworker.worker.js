@@ -21,18 +21,18 @@ let miganOnnxSession;
 let decoderOnnxSession;
 
 let isMobile = checkMobile();
-let mobileSAMEncoderPath = "/mobile_sam.encoder.onnx";
-let modelSAMDecoderONNXPath = "/sam_onnx_decoder_mobile_quantized.onnx";
-let mobile_inpainting_GAN = "/migan_pipeline_v2.onnx";
+let mobileSamEncoderONNX = "/mobile_sam.encoder.onnx";
+let mobileSamDecoderONNX = "/sam_onnx_decoder_mobile_quantized.onnx";
+let MiganONNX = "/migan_pipeline_v2.onnx";
 
 
 
 //load onnx runtime web module and SAM model
 function init(env, appBasePath) {
     if (env !== "development") {
-        mobileSAMEncoderPath = appBasePath + mobileSAMEncoderPath;
-        modelSAMDecoderONNXPath = appBasePath + modelSAMDecoderONNXPath;
-        mobile_inpainting_GAN = appBasePath + mobile_inpainting_GAN;
+        mobileSamEncoderONNX = appBasePath + mobileSamEncoderONNX;
+        mobileSamDecoderONNX = appBasePath + mobileSamDecoderONNX;
+        MiganONNX = appBasePath + MiganONNX;
     }
     import("https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/esm/ort.webgpu.min.js")
         .then(module => {
@@ -52,18 +52,18 @@ async function loadEncoderDecoder() {
     }
     // try loading with webgpu unless its mobile, if it fails, load with wasm
     try {
-        encoderOnnxSession = await ort.InferenceSession.create(mobileSAMEncoderPath, {
+        encoderOnnxSession = await ort.InferenceSession.create(mobileSamEncoderONNX, {
             executionProviders: isMobile ? ['wasm'] : ['webgpu'],
             graphOptimizationLevel: 'all',
         });
     }
     catch (e) {
-        encoderOnnxSession = await ort.InferenceSession.create(mobileSAMEncoderPath, {
+        encoderOnnxSession = await ort.InferenceSession.create(mobileSamEncoderONNX, {
             executionProviders: ['wasm'],
             graphOptimizationLevel: 'all'
         });
     }
-    decoderOnnxSession = await ort.InferenceSession.create(modelSAMDecoderONNXPath, {
+    decoderOnnxSession = await ort.InferenceSession.create(mobileSamDecoderONNX, {
         executionProviders: ['wasm'],
         graphOptimizationLevel: 'all'
     });
@@ -75,13 +75,13 @@ async function loadInpainter() {
     if (!inpainterReady) {
         // try loading with webgpu unless its mobile, if it fails, load with wasm
         try {
-            miganOnnxSession = await ort.InferenceSession.create(mobile_inpainting_GAN, {
+            miganOnnxSession = await ort.InferenceSession.create(MiganONNX, {
                 executionProviders: isMobile? ['wasm'] : ['webgpu'],
                 graphOptimizationLevel: 'disabled',
             });
         }
         catch (e) {
-            miganOnnxSession = await ort.InferenceSession.create(mobile_inpainting_GAN, {
+            miganOnnxSession = await ort.InferenceSession.create(MiganONNX, {
                 executionProviders: ['wasm'],
                 graphOptimizationLevel: 'all'
             });
