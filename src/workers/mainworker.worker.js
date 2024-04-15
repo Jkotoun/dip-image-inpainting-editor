@@ -1,7 +1,5 @@
 //@ts-nocheck
 import { MESSAGE_TYPES } from './messageTypes';
-
-
 //used from https://stackoverflow.com/a/11381730
 /*temporary solution - webGPU is experimental feature, currently it is supported on some mobile browsers,
 but it is not stable, it unexpectedly crashes on some devices. So for now, wasm is used if mobile device is detected */

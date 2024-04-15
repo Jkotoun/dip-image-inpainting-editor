@@ -88,7 +88,7 @@
 		gDecoderRunning;
 
 	if ($mainWorker) {
-		$mainWorker.onmessage = handleWorkerModelsMessages;
+		$mainWorker.onmessage = handleWorkerMessages;
 	}
 
 	//resize img to longside 1024 and run encoder
@@ -102,8 +102,8 @@
 		});
 	};
 
-	//NN models processing webworker incoming messages handling
-	function handleWorkerModelsMessages(event: MessageEvent<any>) {
+	//webworker incoming messages handling
+	function handleWorkerMessages(event: MessageEvent<any>) {
 		const { data, type } = event.data;
 		if (type === MESSAGE_TYPES.INPAINTER_LOADED) {
 			gInpainterLoading = false;
@@ -171,23 +171,24 @@
 
 	//init editor state on editor page load
 	onMount(async () => {
+		//for computing height limit of editor canvases
 		let header = document.querySelector('header');
 		if (header) {
 			gHeaderHeightPx = header.getBoundingClientRect().height;
 		}
-
+		//change ratio of canvas and real img res on win resize
 		window.addEventListener('resize', () => {
 			if (gImageCanvas) {
 				const canvasElementSize = gImageCanvas.getBoundingClientRect();
 				gImgResToCanvasSizeRatio = gImageCanvas.width / canvasElementSize.width;
 			}
 		});
-
+		//if any of these is null, something went wrong, go back to homepage
 		if ($uploadedImgBase64 === null || $uploadedImgFileName === '' || !$mainWorker) {
 			goto(base == '' ? '/' : base);
 			return;
 		}
-
+		//init editor and control elements state
 		gCurrentEditorState = await initEditorState($uploadedImgBase64, $uploadedImgFileName);
 		gPanzoomObj = Panzoom(gCanvasesContainer, {
 			disablePan: !gPanEnabled,
@@ -196,11 +197,12 @@
 			disableZoom: gAnythingEssentialLoading,
 			cursor: 'default'
 		}) as PanzoomObject;
+		//add event listeners
 		gCanvasesContainer.parentElement!.addEventListener('wheel', gPanzoomObj.zoomWithWheel);
 		gCanvasesContainer.addEventListener('panzoomchange', (event: any) => {
 			gCurrentZoom = event.detail.scale;
 		});
-
+		//after all inits, check if models are loaded
 		$mainWorker.postMessage({ type: MESSAGE_TYPES.CHECK_MODELS_LOADING_STATE });
 	});
 
@@ -301,6 +303,7 @@
 		runDecoderCurrentState();
 	}
 
+	//undo
 	function undoLastEditorAction() {
 		if (gEditorStatesHistory.length > 0 && gCurrentEditorState) {
 			gEditorStatesUndoed = [...gEditorStatesUndoed, gCurrentEditorState];
@@ -309,7 +312,7 @@
 			renderEditorState(gCurrentEditorState, gImageCanvas, gMaskCanvas, gImgResToCanvasSizeRatio);
 		}
 	}
-
+	//redo
 	function redoLastEditorAction() {
 		if (gEditorStatesUndoed.length > 0 && gCurrentEditorState) {
 			gEditorStatesHistory = [...gEditorStatesHistory, gCurrentEditorState];
@@ -319,6 +322,7 @@
 		}
 	}
 
+	//reset
 	function resetEditorState() {
 		gPanzoomObj.reset();
 		gCurrentEditorState = {
