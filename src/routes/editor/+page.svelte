@@ -33,6 +33,7 @@
 	let gDecoderLoading = true;
 	let gInpainterLoading = true;
 	let gIsEncoderRunning = false;
+	let gDilatationProcessing = false;
 	let gDecoderRunning = false;
 	let gInpaintingRunning = false;
 	let gIsPainting = false;
@@ -66,11 +67,13 @@
 	let gDisplayBrushCursor: boolean = false;
 
 	//sidebar controls globals
-	let gSAMMaskDilatation: number;
+	let gSAMMaskDilatation: number = 7;
+	$: gSAMMaskDilatationResScaled = gImageCanvas ? gSAMMaskDilatation * (Math.max(gImageCanvas.width, gImageCanvas.height) / 1024) : 1;
 	let gSelectedBrushMode: brushMode; // Initial selected option
 	let gSelectedTool: tool;
 	let gSelectedSAMMode: SAMMode;
 	let gBrushToolSize: number;
+	let gDilatationDebounceTimeout: NodeJS.Timeout;
 
 	//canvas panzoom globals
 	let gPanEnabled: boolean = false;
@@ -78,14 +81,17 @@
 	let gPanzoomObj: PanzoomObject;
 
 	$: handleBrushModeChange(gSelectedBrushMode, gMaskCanvas);
-	$: handleDilatationChange(gSAMMaskDilatation);
+	//scale mask dilatation by resolution, so the mask isnt too big on low res and too small on high res
+	$: handleDilatationChange(gSAMMaskDilatationResScaled, 100)
+
 	$: handlePanzoomSettingsChange(gPanEnabled, gAnythingEssentialLoading);
 	$: gAnythingEssentialLoading =
 		gInpaintingRunning ||
 		gEncoderLoading ||
 		gDecoderLoading ||
 		gIsEncoderRunning ||
-		gDecoderRunning;
+		gDecoderRunning ||
+		gDilatationProcessing;
 
 	if ($mainWorker) {
 		$mainWorker.onmessage = handleWorkerMessages;
@@ -112,7 +118,7 @@
 			//map decoder result to 2D bool mask, dilate it and render new editor state
 			const SAMMaskArray: boolean[][] = decoderResultToMaskArray(data);
 			if (SAMMaskArray) {
-				dilateMaskByPixels(gSAMMaskDilatation, SAMMaskArray).then((dilatedMask) => {
+				dilateMaskByPixels(gSAMMaskDilatationResScaled, SAMMaskArray).then((dilatedMask) => {
 					gCurrentEditorState.maskSAMDilated = dilatedMask;
 					gCurrentEditorState.maskSAM = SAMMaskArray;
 					renderEditorState(
@@ -207,14 +213,20 @@
 	});
 
 	//change dilatation when pixelsDilatation value changes
-	async function handleDilatationChange(pixelsDilatation: number) {
-		if (gCurrentEditorState) {
-			gCurrentEditorState.maskSAMDilated = await dilateMaskByPixels(
-				pixelsDilatation,
-				gCurrentEditorState.maskSAM
-			);
-			renderEditorState(gCurrentEditorState, gImageCanvas, gMaskCanvas, gImgResToCanvasSizeRatio);
-		}
+	async function handleDilatationChange(pixelsDilatation: number, debouncems = 100) {
+		clearTimeout(gDilatationDebounceTimeout);
+		gDilatationProcessing = true
+		gDilatationDebounceTimeout = setTimeout(async () => {
+			if (gCurrentEditorState) {
+				gCurrentEditorState.maskSAMDilated = await dilateMaskByPixels(
+					pixelsDilatation,
+					gCurrentEditorState.maskSAM
+				);
+				renderEditorState(gCurrentEditorState, gImageCanvas, gMaskCanvas, gImgResToCanvasSizeRatio).then(() => {
+					gDilatationProcessing = false
+				});
+			}
+		}, debouncems);
 	}
 
 	//initializes editor state on new image
@@ -228,7 +240,7 @@
 				gImageCanvas.width = gMaskCanvas.width = img.width;
 				gImageCanvas.height = gMaskCanvas.height = img.height;
 				gImgResToCanvasSizeRatio = img.width / gImageCanvas.getBoundingClientRect().width;
-
+				console.log(Math.max(gImageCanvas.width, gImageCanvas.height) / 1024)
 				//render image
 				const ctx = gImageCanvas.getContext('2d');
 				ctx.drawImage(
@@ -581,8 +593,10 @@
 						Removing area...
 					{:else if gIsEncoderRunning}
 						Processing new image...
-					{:else if gDecoderRunning}
+					{:else if gDecoderRunning || gDilatationProcessing}
 						Computing mask...
+					{:else}
+						Loading...
 					{/if}
 				</div>
 			</div>
