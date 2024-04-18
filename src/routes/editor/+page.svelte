@@ -67,7 +67,7 @@
 	let gDisplayBrushCursor: boolean = false;
 
 	//sidebar controls globals
-	let gSAMMaskDilatation: number = 7;
+	let gSAMMaskDilatation: number = 8;
 	$: gSAMMaskDilatationResScaled = gImageCanvas ? gSAMMaskDilatation * (Math.max(gImageCanvas.width, gImageCanvas.height) / 1024) : 1;
 	let gSelectedBrushMode: brushMode; // Initial selected option
 	let gSelectedTool: tool;

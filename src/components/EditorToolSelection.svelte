@@ -53,7 +53,7 @@
 			<label for="pixelsDilatation">Mask dilatation: {SAMMaskDilatation}</label>
 			<input type="range" min="0" max="25" bind:value={SAMMaskDilatation} />
 		{/if}
-		<div class="font-thin text-sm py-3">Tip: For best results, selected area should contain all edges and shadows of the object.</div>
+		<div class="font-thin text-sm py-3">Tip: For best results, selected area should contain all edges and shadows of the object. If object removal process leaves object edge in image, try increasing the mask dilatation setting.</div>
 
 	</div>
 </TabGroup>
