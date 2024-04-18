@@ -68,7 +68,9 @@
 
 	//sidebar controls globals
 	let gSAMMaskDilatation: number = 8;
-	$: gSAMMaskDilatationResScaled = gImageCanvas ? gSAMMaskDilatation * (Math.max(gImageCanvas.width, gImageCanvas.height) / 1024) : 1;
+	$: gSAMMaskDilatationResScaled = gImageCanvas
+		? gSAMMaskDilatation * (Math.max(gImageCanvas.width, gImageCanvas.height) / 1024)
+		: 1;
 	let gSelectedBrushMode: brushMode; // Initial selected option
 	let gSelectedTool: tool;
 	let gSelectedSAMMode: SAMMode;
@@ -82,7 +84,7 @@
 
 	$: handleBrushModeChange(gSelectedBrushMode, gMaskCanvas);
 	//scale mask dilatation by resolution, so the mask isnt too big on low res and too small on high res
-	$: handleDilatationChange(gSAMMaskDilatationResScaled, 100)
+	$: handleDilatationChange(gSAMMaskDilatationResScaled, 100);
 
 	$: handlePanzoomSettingsChange(gPanEnabled, gAnythingEssentialLoading);
 	$: gAnythingEssentialLoading =
@@ -184,9 +186,13 @@
 		}
 		//change ratio of canvas and real img res on win resize
 		window.addEventListener('resize', () => {
+			console.log('resize triggered');
 			if (gImageCanvas) {
-				const canvasElementSize = gImageCanvas.getBoundingClientRect();
-				gImgResToCanvasSizeRatio = gImageCanvas.width / canvasElementSize.width;
+				const canvasElementSize = gMaskCanvas.getBoundingClientRect();
+				gImgResToCanvasSizeRatio = gMaskCanvas.width / canvasElementSize.width;
+				console.log('new width', gMaskCanvas.width / canvasElementSize.width);
+				console.log('new height', gMaskCanvas.height / canvasElementSize.height);
+				renderEditorState(gCurrentEditorState, gImageCanvas, gMaskCanvas, gImgResToCanvasSizeRatio);
 			}
 		});
 		//if any of these is null, something went wrong, go back to homepage
@@ -215,15 +221,20 @@
 	//change dilatation when pixelsDilatation value changes
 	async function handleDilatationChange(pixelsDilatation: number, debouncems = 100) {
 		clearTimeout(gDilatationDebounceTimeout);
-		gDilatationProcessing = true
+		gDilatationProcessing = true;
 		gDilatationDebounceTimeout = setTimeout(async () => {
 			if (gCurrentEditorState) {
 				gCurrentEditorState.maskSAMDilated = await dilateMaskByPixels(
 					pixelsDilatation,
 					gCurrentEditorState.maskSAM
 				);
-				renderEditorState(gCurrentEditorState, gImageCanvas, gMaskCanvas, gImgResToCanvasSizeRatio).then(() => {
-					gDilatationProcessing = false
+				renderEditorState(
+					gCurrentEditorState,
+					gImageCanvas,
+					gMaskCanvas,
+					gImgResToCanvasSizeRatio
+				).then(() => {
+					gDilatationProcessing = false;
 				});
 			}
 		}, debouncems);
@@ -240,7 +251,7 @@
 				gImageCanvas.width = gMaskCanvas.width = img.width;
 				gImageCanvas.height = gMaskCanvas.height = img.height;
 				gImgResToCanvasSizeRatio = img.width / gImageCanvas.getBoundingClientRect().width;
-				console.log(Math.max(gImageCanvas.width, gImageCanvas.height) / 1024)
+				console.log(Math.max(gImageCanvas.width, gImageCanvas.height) / 1024);
 				//render image
 				const ctx = gImageCanvas.getContext('2d');
 				ctx.drawImage(
@@ -513,7 +524,6 @@
 	</svelte:fragment>
 	<div
 		class="flex flex-col gap-y-4 2xl:px-64 xl:px-16 md:px-8 px-2 py-4"
-		style="max-height: calc(100vh - {gHeaderHeightPx}px)"
 	>
 		<!-- upper buttons rows -->
 		<div class="flex flex-none justify-between">
@@ -601,28 +611,26 @@
 				</div>
 			</div>
 			<div class="canvases w-full" bind:this={gCanvasesContainer}>
-				<div class="relative !h-full !w-full flex justify-center" role="group">
-					<div class="flex-none" />
-					<div
-						class="relative flex-none shrink"
-						style="cursor: {currentCanvasCursor(gPanEnabled, gSelectedTool)}"
-						on:mouseenter={() => {
-							gDisplayBrushCursor =
-								gSelectedTool === 'brush' && !gAnythingEssentialLoading && !gPanEnabled;
-						}}
-						on:mouseleave={() => {
-							gDisplayBrushCursor = false;
-						}}
-						role="group"
-					>
-						<div class="absolute w-full h-full overflow-hidden">
-							<div
-								id="brushToolCursor"
-								role="group"
-								class="
+				<div
+					class="relative !h-full !w-full justify-center"
+					role="group"
+					style="cursor: {currentCanvasCursor(gPanEnabled, gSelectedTool)}"
+					on:mouseenter={() => {
+						gDisplayBrushCursor =
+							gSelectedTool === 'brush' && !gAnythingEssentialLoading && !gPanEnabled;
+					}}
+					on:mouseleave={() => {
+						gDisplayBrushCursor = false;
+					}}
+				>
+					<div class="absolute w-full h-full overflow-hidden">
+						<div
+							id="brushToolCursor"
+							role="group"
+							class="
 								overflow-hidden absolute rounded-full pointer-events-none z-50
 								{gDisplayBrushCursor ? 'block' : 'hidden'}"
-								style="
+							style="
 									transform: translate(-50%, -50%);
 									width: {gBrushToolSize - 2}px;
 									height: {gBrushToolSize - 2}px;
@@ -632,59 +640,57 @@
 									border: 1px solid {gSelectedBrushMode === 'brush' ? '#0261ed' : '#bfbfbf'};
 									opacity: {gIsPainting ? 0.6 : 0.5};
 									"
-							/>
-						</div>
-						<canvas
-							class="shadow-lg inset-0 w-full h-full
+						/>
+					</div>
+					<canvas
+						class="shadow-lg inset-0 w-full h-full
 						{gAnythingEssentialLoading ? 'opacity-30 cursor-not-allowed' : ''} 
 						{gShowOriginalImage === true ? '!hidden' : '!block'}
 						
 						"
-							id="imageCanvas"
-							bind:this={gImageCanvas}
-						/>
+						id="imageCanvas"
+						bind:this={gImageCanvas}
+					/>
 
-						<canvas
-							id="maskCanvas"
-							class=" inset-0 w-full h-full absolute opacity-50
+					<canvas
+						id="maskCanvas"
+						class=" inset-0 w-full h-full absolute opacity-50
 						{gPanEnabled ? '' : 'panzoom-exclude'} 
 						{gAnythingEssentialLoading ? 'opacity-30 cursor-not-allowed' : ''}
 						{gShowOriginalImage ? '!hidden' : '!block'}
 						"
-							bind:this={gMaskCanvas}
-							on:mousedown={gSelectedTool === 'brush' && !gPanEnabled
-								? (e) => startPainting(e, gMaskCanvas)
+						bind:this={gMaskCanvas}
+						on:mousedown={gSelectedTool === 'brush' && !gPanEnabled
+							? (e) => startPainting(e, gMaskCanvas)
+							: undefined}
+						on:mouseup={gSelectedTool === 'brush' && !gPanEnabled ? stopPainting : undefined}
+						on:mousemove={(event) =>
+							gSelectedTool === 'brush' && !gPanEnabled
+								? handleEditorCursorMove(event, gMaskCanvas)
 								: undefined}
-							on:mouseup={gSelectedTool === 'brush' && !gPanEnabled ? stopPainting : undefined}
-							on:mousemove={(event) =>
-								gSelectedTool === 'brush' && !gPanEnabled
-									? handleEditorCursorMove(event, gMaskCanvas)
-									: undefined}
-							on:touchstart={gSelectedTool === 'brush' && !gPanEnabled
-								? (e) => startPainting(e, gMaskCanvas)
-								: undefined}
-							on:touchend={gSelectedTool === 'brush' && !gPanEnabled ? stopPainting : undefined}
-							on:touchmove={gSelectedTool === 'brush' && !gPanEnabled
-								? (e) => {
-										e.preventDefault();
-										handleEditorCursorMove(e, gMaskCanvas);
-								  }
-								: undefined}
-							on:click={gSelectedTool === 'segment_anything' && !gPanEnabled
-								? handleCanvasClick
-								: undefined}
-						/>
+						on:touchstart={gSelectedTool === 'brush' && !gPanEnabled
+							? (e) => startPainting(e, gMaskCanvas)
+							: undefined}
+						on:touchend={gSelectedTool === 'brush' && !gPanEnabled ? stopPainting : undefined}
+						on:touchmove={gSelectedTool === 'brush' && !gPanEnabled
+							? (e) => {
+									e.preventDefault();
+									handleEditorCursorMove(e, gMaskCanvas);
+							  }
+							: undefined}
+						on:click={gSelectedTool === 'segment_anything' && !gPanEnabled
+							? handleCanvasClick
+							: undefined}
+					/>
 
-						<img
-							class="shadow-lg inset-0 w-full h-full
+					<img
+						class="shadow-lg inset-0 w-full h-full
 								{gAnythingEssentialLoading ? 'opacity-50 cursor-not-allowed' : ''}
 								{gShowOriginalImage === true ? '!block' : '!hidden'}"
-							src={$uploadedImgBase64}
-							alt="originalImage"
-							bind:this={gOriginalImgElement}
-						/>
-					</div>
-					<div class="flex-none" />
+						src={$uploadedImgBase64}
+						alt="originalImage"
+						bind:this={gOriginalImgElement}
+					/>
 				</div>
 			</div>
 		</div>
