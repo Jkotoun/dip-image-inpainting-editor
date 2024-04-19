@@ -250,6 +250,19 @@
 				// Calculate aspect ratio
 				gImageCanvas.width = gMaskCanvas.width = img.width;
 				gImageCanvas.height = gMaskCanvas.height = img.height;
+				//portrait mode
+				if(img.height* 1.5 > img.width){
+					gImageCanvas.style.maxHeight = gMaskCanvas.style.maxHeight = '75vh';
+					gImageCanvas.style.width = gMaskCanvas.style.width = 'auto';
+				}
+				//landscape mode
+				else{
+					gImageCanvas.style.maxHeight = gMaskCanvas.style.maxHeight = 'auto';
+					gImageCanvas.style.width = gMaskCanvas.style.width = '100%';
+				}
+
+
+				console.log('portrait mode', img.height* 1.5 > img.width);
 				gImgResToCanvasSizeRatio = img.width / gImageCanvas.getBoundingClientRect().width;
 				console.log(Math.max(gImageCanvas.width, gImageCanvas.height) / 1024);
 				//render image
@@ -522,9 +535,7 @@
 			bind:brushToolSize={gBrushToolSize}
 		/>
 	</svelte:fragment>
-	<div
-		class="flex flex-col gap-y-4 2xl:px-64 xl:px-16 md:px-8 px-2 py-4"
-	>
+	<div class="flex flex-col gap-y-4 2xl:px-64 xl:px-16 md:px-8 px-2 py-4">
 		<!-- upper buttons rows -->
 		<div class="flex flex-none justify-between">
 			<div class="flex lg:gap-x-2 gap-x-1">
@@ -587,7 +598,7 @@
 		<!-- canvases -->
 		<div
 			id="mainEditorContainer"
-			class="grow overflow-hidden relative flex justify-center"
+			class="grow relative flex justify-center"
 			style="cursor: {gAnythingEssentialLoading ? 'not-allowed' : 'default'}"
 		>
 			<div
@@ -623,7 +634,7 @@
 						gDisplayBrushCursor = false;
 					}}
 				>
-					<div class="absolute w-full h-full overflow-hidden">
+					<div class="absolute w-full h-full overflow-hidden" id="brushContainer">
 						<div
 							id="brushToolCursor"
 							role="group"
@@ -642,8 +653,10 @@
 									"
 						/>
 					</div>
+					<!-- style={gIsPortraitModePhoto ? "max-height: 75vh; width: auto" : ""}
+					{gIsPortraitModePhoto ? '' : 'w-full h-auto'} -->
 					<canvas
-						class="shadow-lg inset-0 w-full h-full
+						class="shadow-lg inset-0 m-auto
 						{gAnythingEssentialLoading ? 'opacity-30 cursor-not-allowed' : ''} 
 						{gShowOriginalImage === true ? '!hidden' : '!block'}
 						
@@ -652,9 +665,14 @@
 						bind:this={gImageCanvas}
 					/>
 
+					<!-- style="max-height: 75vh; width: auto" -->
+					<!-- style={gIsPortraitModePhoto ? "max-height: 75vh; width: auto" : ""}
+					{gIsPortraitModePhoto ? '' : 'w-full h-auto'} -->
 					<canvas
 						id="maskCanvas"
-						class=" inset-0 w-full h-full absolute opacity-50
+						class=" inset-0
+						m-auto
+						absolute opacity-50
 						{gPanEnabled ? '' : 'panzoom-exclude'} 
 						{gAnythingEssentialLoading ? 'opacity-30 cursor-not-allowed' : ''}
 						{gShowOriginalImage ? '!hidden' : '!block'}
