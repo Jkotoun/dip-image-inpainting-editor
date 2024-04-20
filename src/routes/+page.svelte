@@ -79,14 +79,14 @@
 		`${base}/example_photos/example_dog.jpg`,
 		`${base}/example_photos/overcast.webp`,
 		`${base}/example_photos/example_people_sunset.jpg`,
-		`${base}/example_photos/free-photo-of-ryma-studeny-snih-drevo.jpeg`,
 		`${base}/example_photos/lukas_snih.jpg`,
-		`${base}/example_photos/mountain-5649827_1280.jpg`,
 		`${base}/example_photos/20230808_181343.jpg`,
 		`${base}/example_photos/example_sunset2.jpg`,
-		`${base}/example_photos/1920resized_street.jpg`
 	];
-
+	// `${base}/example_photos/free-photo-of-ryma-studeny-snih-drevo.jpeg`,
+	// `${base}/example_photos/mountain-5649827_1280.jpg`,
+	// `${base}/example_photos/1920resized_street.jpg`
+	
 	async function getImageResolution(url: string): Promise<{ width: number; height: number }> {
 		const img = document.createElement('img');
 		const promise: Promise<{ width: number; height: number }> = new Promise((resolve, reject) => {
@@ -250,18 +250,18 @@
 					<h4 class="h4 font-semibold pt-4 pb-2 text-center">Or try with an example</h4>
 					<div class="grid grid-cols-[auto_1fr_auto] gap-4 items-center  pt-4">
 						<!-- Button: Left -->
-						<button type="button" class="btn-icon variant-filled" on:click={multiColumnLeft}>
-							<ArrowLeft />
+						<button type="button" class="btn-icon btn-icon-sm variant-filled" on:click={multiColumnLeft}>
+							<ArrowLeft size={20}/>
 						</button>
 						<!-- Carousel -->
 						<div
 							bind:this={gExamplesContainerElem}
-							class="snap-x snap-mandatory  scroll-smooth flex gap-2 pb-2 overflow-x-auto"
+							class="snap-x snap-mandatory  max-h-[125px]   scroll-smooth flex gap-5 pb-2 overflow-hidden "
 						>
 							{#each exampleImages as imgpath}
 								<button
 									type="button"
-									class="shrink-0 w-[28%] snap-start  max-h-[100px]"
+									class="shrink-0 w-[28%] snap-start"
 									on:click={async (e) => {
 										const { base64data, imageName, resolution } = await getImgDataFromUrl(imgpath);
 										uploadedImgBase64.set(base64data);
@@ -270,13 +270,13 @@
 										goto(`${base}/editor`);
 									}}
 								>
-									<img class="cursor-pointer  " src={imgpath} alt="example_image" />
+									<img class="cursor-pointer  object-cover object-center" src={imgpath} alt="example_image" />
 								</button>
 							{/each}
 						</div>
 						<!-- Button-Right -->
-						<button type="button" class="btn-icon variant-filled" on:click={multiColumnRight}>
-							<ArrowRight />
+						<button type="button" class="btn-icon btn-icon-sm variant-filled" on:click={multiColumnRight}>
+							<ArrowRight size={20} />
 						</button>
 					</div>
 				</div>
