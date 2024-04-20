@@ -255,7 +255,8 @@
 				//landscape mode
 				else{
 					gImageCanvas.style.height = gMaskCanvas.style.height = gOriginalImgElement.style.height = 'auto';
-					gImageCanvas.style.width = gMaskCanvas.style.width = gOriginalImgElement.style.width = '100%';
+					gImageCanvas.style.width = gMaskCanvas.style.width = gOriginalImgElement.style.width = gCanvasesContainer.style.width = '100%';
+					
 				}
 				gImgResToCanvasSizeRatio = targetRes.width / gImageCanvas.getBoundingClientRect().width;
 				//render image
@@ -272,7 +273,7 @@
 					gImageCanvas.height
 				);
 				gImgDataOriginal = getImageData(gImageCanvas);
-
+				gOriginalImgElement.src = gImageCanvas.toDataURL();
 				//setup editor state
 				gEditorStatesHistory = [];
 				gEditorStatesUndoed = [];
@@ -614,7 +615,7 @@
 					{/if}
 				</div>
 			</div>
-			<div class="canvases w-full" bind:this={gCanvasesContainer}>
+			<div class="canvases " bind:this={gCanvasesContainer}>
 				<div
 					class="relative !h-full !w-full justify-center"
 					role="group"
@@ -627,7 +628,7 @@
 						gDisplayBrushCursor = false;
 					}}
 				>
-					<div class="absolute w-full h-full overflow-hidden" id="brushContainer">
+					<div class="absolute w-full h-full  overflow-hidden" id="brushContainer">
 						<div
 							id="brushToolCursor"
 							role="group"
@@ -647,7 +648,7 @@
 						/>
 					</div>
 					<canvas
-						class="shadow-lg inset-0 m-auto max-w-full	
+						class="shadow-lg inset-0 max-w-full	
 						{gAnythingEssentialLoading ? 'opacity-30 cursor-not-allowed' : ''} 
 						{gShowOriginalImage  ? '!hidden' : '!block'}
 						"
@@ -657,7 +658,7 @@
 
 					<canvas
 						id="maskCanvas"
-						class="inset-0 m-auto absolute opacity-50 max-w-full	
+						class="inset-0  absolute opacity-50 max-w-full	
 						{gPanEnabled ? '' : 'panzoom-exclude'} 
 						{gAnythingEssentialLoading ? 'opacity-30 cursor-not-allowed' : ''}
 						{gShowOriginalImage ? '!hidden' : '!block'}
@@ -690,7 +691,6 @@
 						class="shadow-lg m-auto inset-0 w-full h-full
 								{gAnythingEssentialLoading ? 'opacity-50 cursor-not-allowed' : ''}
 								{gShowOriginalImage === true ? '!block' : '!hidden'}"
-						src={$uploadedImgBase64}
 						alt="originalImage"
 						bind:this={gOriginalImgElement}
 					/>

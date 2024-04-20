@@ -40,7 +40,7 @@
 			<label for="sammodeselect" class="font-semibold">Select smart selector mode:</label>
 			<div class="font-thin">
 				Add positive (adds area to selection) or negative (removes area from selection) points for
-				selection
+				selection. Select and remove objects one by one.
 			</div>
 			<RadioGroup id="sammodeselect" class="text-token mb-4">
 				<RadioItem bind:group={selectedSAMMode} name="sammode" value="positive">
