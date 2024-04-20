@@ -225,9 +225,9 @@
 			<div class="md:pt-16 pt-4 flex md:flex-row flex-col-reverse gap-4">
 				<div class="flex-1">
 					<CompareImage
-						imageLeftSrc="/before.png"
+						imageLeftSrc='${base}/before.png'
 						imageLeftAlt="left"
-						imageRightSrc="/after.png"
+						imageRightSrc='${base}/after.png'
 						imageRightAlt="right"
 						--handle-size="1.625rem"
 					/>
