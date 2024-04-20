@@ -252,19 +252,15 @@
 				gImageCanvas.height = gMaskCanvas.height = img.height;
 				//portrait mode
 				if(img.height* 1.5 > img.width){
-					gImageCanvas.style.maxHeight = gMaskCanvas.style.maxHeight = '75vh';
-					gImageCanvas.style.width = gMaskCanvas.style.width = 'auto';
+					gImageCanvas.style.maxHeight = gMaskCanvas.style.maxHeight = gOriginalImgElement.style.maxHeight =  '70vh';
+					gImageCanvas.style.width = gMaskCanvas.style.width = gOriginalImgElement.style.width = 'auto';
 				}
 				//landscape mode
 				else{
-					gImageCanvas.style.maxHeight = gMaskCanvas.style.maxHeight = 'auto';
-					gImageCanvas.style.width = gMaskCanvas.style.width = '100%';
+					gImageCanvas.style.height = gMaskCanvas.style.height = gOriginalImgElement.style.height = 'auto';
+					gImageCanvas.style.width = gMaskCanvas.style.width = gOriginalImgElement.style.width = '100%';
 				}
-
-
-				console.log('portrait mode', img.height* 1.5 > img.width);
 				gImgResToCanvasSizeRatio = img.width / gImageCanvas.getBoundingClientRect().width;
-				console.log(Math.max(gImageCanvas.width, gImageCanvas.height) / 1024);
 				//render image
 				const ctx = gImageCanvas.getContext('2d');
 				ctx.drawImage(
@@ -653,26 +649,18 @@
 									"
 						/>
 					</div>
-					<!-- style={gIsPortraitModePhoto ? "max-height: 75vh; width: auto" : ""}
-					{gIsPortraitModePhoto ? '' : 'w-full h-auto'} -->
 					<canvas
-						class="shadow-lg inset-0 m-auto
+						class="shadow-lg inset-0 m-auto max-w-full	
 						{gAnythingEssentialLoading ? 'opacity-30 cursor-not-allowed' : ''} 
-						{gShowOriginalImage === true ? '!hidden' : '!block'}
-						
+						{gShowOriginalImage  ? '!hidden' : '!block'}
 						"
 						id="imageCanvas"
 						bind:this={gImageCanvas}
 					/>
 
-					<!-- style="max-height: 75vh; width: auto" -->
-					<!-- style={gIsPortraitModePhoto ? "max-height: 75vh; width: auto" : ""}
-					{gIsPortraitModePhoto ? '' : 'w-full h-auto'} -->
 					<canvas
 						id="maskCanvas"
-						class=" inset-0
-						m-auto
-						absolute opacity-50
+						class="inset-0 m-auto absolute opacity-50 max-w-full	
 						{gPanEnabled ? '' : 'panzoom-exclude'} 
 						{gAnythingEssentialLoading ? 'opacity-30 cursor-not-allowed' : ''}
 						{gShowOriginalImage ? '!hidden' : '!block'}
@@ -702,7 +690,7 @@
 					/>
 
 					<img
-						class="shadow-lg inset-0 w-full h-full
+						class="shadow-lg m-auto inset-0 w-full h-full
 								{gAnythingEssentialLoading ? 'opacity-50 cursor-not-allowed' : ''}
 								{gShowOriginalImage === true ? '!block' : '!hidden'}"
 						src={$uploadedImgBase64}
