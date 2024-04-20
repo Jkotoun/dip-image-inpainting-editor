@@ -26,6 +26,9 @@ dependencies:
   npyjs:
     specifier: ^0.6.0
     version: 0.6.0
+  svelte-compare-image:
+    specifier: ^3.0.0
+    version: 3.0.0(svelte@4.2.12)
   vite-plugin-cdn-import:
     specifier: ^0.3.5
     version: 0.3.5(rollup@2.79.1)
@@ -2869,6 +2872,15 @@ packages:
       - stylus
       - sugarss
     dev: true
+
+  /svelte-compare-image@3.0.0(svelte@4.2.12):
+    resolution: {integrity: sha512-SgxQ6Co7Ssuh+KJGhuclsWWjzwt+eKzv1wPPKMtgTxS+W+wix/aiV/nFjBE0VW9RYY/J/8adPVJDAc1fUv4RqA==}
+    engines: {node: ^18.18.0 || >=20.0.0}
+    peerDependencies:
+      svelte: ^4.0.0
+    dependencies:
+      svelte: 4.2.12
+    dev: false
 
   /svelte-eslint-parser@0.33.1(svelte@4.2.12):
     resolution: {integrity: sha512-vo7xPGTlKBGdLH8T5L64FipvTrqv3OQRx9d2z5X05KKZDlF4rQk8KViZO4flKERY+5BiVdOh7zZ7JGJWo5P0uA==}

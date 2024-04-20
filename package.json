@@ -41,6 +41,7 @@
 		"jimp": "^0.22.12",
 		"lucide-svelte": "^0.356.0",
 		"npyjs": "^0.6.0",
+		"svelte-compare-image": "^3.0.0",
 		"vite-plugin-cdn-import": "^0.3.5",
 		"vite-plugin-cross-origin-isolation": "^0.1.6"
 	}
