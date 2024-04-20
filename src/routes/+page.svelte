@@ -1,14 +1,23 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { uploadedImgBase64, uploadedImgFileName } from '../stores/imgStore';
+	import { uploadedImgBase64, uploadedImgFileName, uploadedImgTargetRes } from '../stores/imgStore';
 	import { mainWorker } from '../stores/workerStore';
-	import { AppShell, FileDropzone } from '@skeletonlabs/skeleton';
+	import {
+		AppShell,
+		FileDropzone,
+		getModalStore,
+		type ModalSettings
+	} from '@skeletonlabs/skeleton';
 	import { FileUp } from 'lucide-svelte';
 	import { onMount } from 'svelte';
 	import { base } from '$app/paths';
 	import { MESSAGE_TYPES } from '../workers/messageTypes';
 	import Navbar from './../components/Navbar.svelte';
 	import EditStepCard from '../components/EditStepCard.svelte';
+
+	//high res resize modal
+	const modalStore = getModalStore();
+	const longsideResResizeThreshold = 2000;
 
 	interface cardProps {
 		title: string;
@@ -42,6 +51,22 @@
 		}
 	];
 
+	async function getImageResolution(url: string): Promise<{ width: number; height: number }> {
+		const img = document.createElement('img');
+		const promise: Promise<{ width: number; height: number }> = new Promise((resolve, reject) => {
+			img.onload = () => {
+				const width = img.naturalWidth;
+				const height = img.naturalHeight;
+				resolve({ width, height });
+			};
+
+			img.onerror = reject;
+		});
+
+		img.src = url;
+		return promise;
+	}
+
 	//on user image upload, redirect to editor page and store img data to store
 	const handleImageUpload = async (event: Event) => {
 		const files = (event.target as HTMLInputElement).files;
@@ -55,11 +80,35 @@
 		reader.onload = async (e) => {
 			// Store the uploaded image data in the store
 			uploadedImgBase64.set(e.target?.result as string);
+			
+			const { width, height } = await getImageResolution(e.target?.result as string);
+			uploadedImgTargetRes.set({ width, height });
+			if (width > longsideResResizeThreshold || height > longsideResResizeThreshold) {
 
-			// Redirect to the editor page
-			goto(`${base}/editor`);
+				let aspectRatio = width / height;
+				let newWidth = aspectRatio > 1 ? longsideResResizeThreshold : Math.round(longsideResResizeThreshold * aspectRatio);
+				let newHeight = aspectRatio > 1 ? Math.round(longsideResResizeThreshold / aspectRatio) : longsideResResizeThreshold;
+
+				const highResResizeModal: ModalSettings = {
+					type: 'confirm',
+					title: 'High resolution image resize',
+					body: `The image "${$uploadedImgFileName}" has very high resolution of ${width}x${height}, which may cause poor performance of editor. \
+					Do you want to resize the image to ${newWidth}x${newHeight} for better performance or keep the best image \
+					quality despite possible performance issues?`,
+					buttonTextCancel: `Keep original resolution`,
+					buttonTextConfirm: `Resize to ${newWidth}x${newHeight}`,
+					response: (resize) => {
+						if (resize) {
+							uploadedImgTargetRes.set({ width: newWidth, height: newHeight});
+						} 
+							goto(`${base}/editor`);
+					}
+				};
+				modalStore.trigger(highResResizeModal);
+			} else {
+				goto(`${base}/editor`);
+			}
 		};
-
 		reader.readAsDataURL(uploadedImageFile);
 	};
 
@@ -90,6 +139,8 @@
 	</svelte:fragment>
 
 	<div>
+		<!-- <button on:click={() => }>asda</button> -->
+
 		<div class="py-4 2xl:px-32 px-8">
 			<h1 class="h1 pt-8 font-bold">Remove objects from images with powerful AI tools</h1>
 			<h3 class="h3 pt-4">

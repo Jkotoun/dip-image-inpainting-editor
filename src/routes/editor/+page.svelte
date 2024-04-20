@@ -7,7 +7,7 @@
 	import { AppShell, Drawer, getDrawerStore, ProgressRadial } from '@skeletonlabs/skeleton';
 	import { mainWorker } from '../../stores/workerStore';
 	import { MESSAGE_TYPES } from '../../workers/messageTypes';
-	import { uploadedImgBase64, uploadedImgFileName } from '../../stores/imgStore';
+	import { uploadedImgBase64, uploadedImgFileName, uploadedImgTargetRes } from '../../stores/imgStore';
 	import Navbar from './../../components/Navbar.svelte';
 	import EditorToolSelection from './../../components/EditorToolSelection.svelte';
 	import PanzoomCanvasControls from '../../components/PanzoomCanvasControls.svelte';
@@ -186,22 +186,19 @@
 		}
 		//change ratio of canvas and real img res on win resize
 		window.addEventListener('resize', () => {
-			console.log('resize triggered');
 			if (gImageCanvas) {
 				const canvasElementSize = gMaskCanvas.getBoundingClientRect();
 				gImgResToCanvasSizeRatio = gMaskCanvas.width / canvasElementSize.width;
-				console.log('new width', gMaskCanvas.width / canvasElementSize.width);
-				console.log('new height', gMaskCanvas.height / canvasElementSize.height);
 				renderEditorState(gCurrentEditorState, gImageCanvas, gMaskCanvas, gImgResToCanvasSizeRatio);
 			}
 		});
 		//if any of these is null, something went wrong, go back to homepage
-		if ($uploadedImgBase64 === null || $uploadedImgFileName === '' || !$mainWorker) {
+		if ($uploadedImgBase64 === null || $uploadedImgFileName === '' || $uploadedImgTargetRes === null || !$mainWorker) {
 			goto(base == '' ? '/' : base);
 			return;
 		}
 		//init editor and control elements state
-		gCurrentEditorState = await initEditorState($uploadedImgBase64, $uploadedImgFileName);
+		gCurrentEditorState = await initEditorState($uploadedImgBase64, $uploadedImgFileName, $uploadedImgTargetRes);
 		gPanzoomObj = Panzoom(gCanvasesContainer, {
 			disablePan: !gPanEnabled,
 			minScale: 1,
@@ -241,17 +238,17 @@
 	}
 
 	//initializes editor state on new image
-	const initEditorState = async (sourceImgBase64Data: string, sourceImgName: string) => {
+	const initEditorState = async (sourceImgBase64Data: string, sourceImgName: string, targetRes: {width: number, height: number}) => {
 		return new Promise<editorState>((resolve, reject) => {
 			gImgName = sourceImgName;
 			const img = new Image();
 			img.src = sourceImgBase64Data;
 			img.onload = async () => {
 				// Calculate aspect ratio
-				gImageCanvas.width = gMaskCanvas.width = img.width;
-				gImageCanvas.height = gMaskCanvas.height = img.height;
+				gImageCanvas.width = gMaskCanvas.width = targetRes.width;
+				gImageCanvas.height = gMaskCanvas.height = targetRes.height;
 				//portrait mode
-				if(img.height* 1.5 > img.width){
+				if(targetRes.height* 1.5 > targetRes.width){
 					gImageCanvas.style.maxHeight = gMaskCanvas.style.maxHeight = gOriginalImgElement.style.maxHeight =  '70vh';
 					gImageCanvas.style.width = gMaskCanvas.style.width = gOriginalImgElement.style.width = 'auto';
 				}
@@ -260,7 +257,7 @@
 					gImageCanvas.style.height = gMaskCanvas.style.height = gOriginalImgElement.style.height = 'auto';
 					gImageCanvas.style.width = gMaskCanvas.style.width = gOriginalImgElement.style.width = '100%';
 				}
-				gImgResToCanvasSizeRatio = img.width / gImageCanvas.getBoundingClientRect().width;
+				gImgResToCanvasSizeRatio = targetRes.width / gImageCanvas.getBoundingClientRect().width;
 				//render image
 				const ctx = gImageCanvas.getContext('2d');
 				ctx.drawImage(

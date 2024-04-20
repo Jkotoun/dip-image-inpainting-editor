@@ -84,6 +84,7 @@ export function maskArrayFromImgData(imageData: ImageData, canvasWidth: number, 
 
 //download canvas data as png
 export function downloadImage(imageData: ImageData, imgName: string) {
+    console.log("start download action")
     // Create a temporary canvas element
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = imageData.width;
@@ -104,6 +105,7 @@ export function downloadImage(imageData: ImageData, imgName: string) {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
     }, 'image/png');
+    console.log("end download action")
 }
 
 export function clearCanvas(canvas: HTMLCanvasElement) {
