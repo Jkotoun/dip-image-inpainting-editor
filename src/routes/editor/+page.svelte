@@ -197,6 +197,9 @@
 			goto(base == '' ? '/' : base);
 			return;
 		}
+		console.log($uploadedImgBase64)
+		console.log($uploadedImgFileName)
+		console.log($uploadedImgTargetRes)
 		//init editor and control elements state
 		gCurrentEditorState = await initEditorState($uploadedImgBase64, $uploadedImgFileName, $uploadedImgTargetRes);
 		gPanzoomObj = Panzoom(gCanvasesContainer, {
@@ -239,9 +242,12 @@
 
 	//initializes editor state on new image
 	const initEditorState = async (sourceImgBase64Data: string, sourceImgName: string, targetRes: {width: number, height: number}) => {
+		
 		return new Promise<editorState>((resolve, reject) => {
 			gImgName = sourceImgName;
 			const img = new Image();
+
+
 			img.src = sourceImgBase64Data;
 			img.onload = async () => {
 				// Calculate aspect ratio

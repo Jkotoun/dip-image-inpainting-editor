@@ -89,7 +89,7 @@
 	// `${base}/example_photos/mountain-5649827_1280.jpg`,
 	// `${base}/example_photos/1920resized_street.jpg`
 
-	//image resolution from its url 
+	//image resolution from its url
 	async function getImageResolution(url: string): Promise<{ width: number; height: number }> {
 		const img = new Image();
 		const promise: Promise<{ width: number; height: number }> = new Promise((resolve, reject) => {
@@ -119,16 +119,20 @@
 		const blob = await data.blob();
 		const img = new Image();
 		img.src = URL.createObjectURL(blob);
+		console.log;
 		const promise: any = new Promise((resolve, reject) => {
 			const reader = new FileReader();
 			reader.readAsDataURL(blob);
 			reader.onloadend = () => {
 				const base64data: string = reader.result as string;
-				const resolution: { width: number; height: number } = {
-					width: img.width,
-					height: img.height
+				img.onload = () => {
+					const resolution: { width: number; height: number } = {
+						width: img.width,
+						height: img.height
+					};
+					resolve({ base64data: base64data, imageName: imageName, resolution });
 				};
-				resolve({ base64data: base64data, imageName: imageName, resolution });
+				img.onerror = reject;
 			};
 			reader.onerror = reject;
 		});
@@ -188,6 +192,9 @@
 
 	//init worker
 	onMount(() => {
+		uploadedImgBase64.set(null);
+		uploadedImgFileName.set('');
+		uploadedImgTargetRes.set(null);
 		if (!$mainWorker) {
 			w = new Worker(new URL('./../workers/mainworker.worker.js', import.meta.url), {
 				type: 'module'
@@ -201,9 +208,6 @@
 			});
 			mainWorker.set(w);
 		}
-		uploadedImgBase64.set(null);
-		uploadedImgFileName.set('');
-		uploadedImgTargetRes.set(null);
 	});
 </script>
 
@@ -225,9 +229,9 @@
 			<div class="md:pt-16 pt-4 flex md:flex-row flex-col-reverse gap-4">
 				<div class="flex-1">
 					<CompareImage
-						imageLeftSrc='{base}/before.png'
+						imageLeftSrc="{base}/before.png"
 						imageLeftAlt="left"
-						imageRightSrc='{base}/after.png'
+						imageRightSrc="{base}/after.png"
 						imageRightAlt="right"
 						--handle-size="1.625rem"
 					/>
