@@ -119,7 +119,6 @@
 		const blob = await data.blob();
 		const img = new Image();
 		img.src = URL.createObjectURL(blob);
-		console.log;
 		const promise: any = new Promise((resolve, reject) => {
 			const reader = new FileReader();
 			reader.readAsDataURL(blob);
@@ -226,7 +225,8 @@
 				Easily remove any unwanted objects, people, defects or text from images with help of
 				AI-powered tools
 			</h3>
-			<div class="md:pt-16 pt-4 flex md:flex-row flex-col-reverse gap-4">
+
+			<div class="md:pt-16 pt-4 flex lg:flex-row flex-col gap-4">
 				<div class="flex-1">
 					<CompareImage
 						imageLeftSrc="{base}/before.png"
@@ -236,67 +236,66 @@
 						--handle-size="1.625rem"
 					/>
 				</div>
-				<div class="flex-1">
-					<FileDropzone
-						name="files"
-						padding="2xl:py-28 xl:py-20 lg:py-8 md:py-2 py-8 "
-						accept="image/*"
-						on:change={(e) => handleImageUpload(e)}
-					>
-						<svelte:fragment slot="lead">
-							<div class="flex justify-center">
-								<FileUp size={64} />
+				<div class="flex flex-1 flex-col gap-y-3">
+					<div class="flex" style="flex:2">
+						<FileDropzone name="files" accept="image/*" on:change={(e) => handleImageUpload(e)}>
+							<svelte:fragment slot="lead">
+								<div class="flex justify-center">
+									<FileUp size={64} />
+								</div>
+							</svelte:fragment>
+							<svelte:fragment slot="message"
+								><span class="font-semibold">Upload an image or drag and drop</span
+								></svelte:fragment
+							>
+						</FileDropzone>
+					</div>
+					<div class="flex justify-center" >
+						<h4 class="h4 font-semibold">Or try with an example</h4>
+					</div>
+					<div class="flex" style="flex:1">
+						<div class="grid grid-cols-[auto_1fr_auto] gap-4 items-center">
+							<!-- Button: Left -->
+							<button
+								type="button"
+								class="btn-icon btn-icon-sm variant-filled"
+								on:click={multiColumnLeft}
+							>
+								<ArrowLeft size={20} />
+							</button>
+							<!-- Carousel -->
+							<div
+								bind:this={gExamplesContainerElem}
+								class="snap-x snap-mandatory scroll-smooth flex gap-5 overflow-hidden"
+							>
+								{#each exampleImages as imgpath}
+									<button
+										class="shrink-0 md:w-[28%] w-[50%] snap-start"
+										type="button"
+										on:click={async (e) => {
+											//set image data to global store and redirect to editor
+											const { base64data, imageName, resolution } = await getImgDataFromUrl(
+												imgpath
+											);
+											uploadedImgBase64.set(base64data);
+											uploadedImgFileName.set(imageName);
+											uploadedImgTargetRes.set(resolution);
+											goto(`${base}/editor`);
+										}}
+									>
+										<img class="cursor-pointer" src={imgpath} alt="example_image" />
+									</button>
+								{/each}
 							</div>
-						</svelte:fragment>
-						<svelte:fragment slot="message"
-							><span class="font-semibold">Upload an image or drag and drop</span></svelte:fragment
-						>
-					</FileDropzone>
-
-					<h4 class="h4 font-semibold pt-4 pb-2 text-center">Or try with an example</h4>
-					<div class="grid grid-cols-[auto_1fr_auto] gap-4 items-center pt-4">
-						<!-- Button: Left -->
-						<button
-							type="button"
-							class="btn-icon btn-icon-sm variant-filled"
-							on:click={multiColumnLeft}
-						>
-							<ArrowLeft size={20} />
-						</button>
-						<!-- Carousel -->
-						<div
-							bind:this={gExamplesContainerElem}
-							class="snap-x snap-mandatory max-h-[130px] scroll-smooth flex gap-5 pb-2 overflow-hidden"
-						>
-							{#each exampleImages as imgpath}
-								<button
-									type="button"
-									class="shrink-0 w-[28%] snap-start"
-									on:click={async (e) => {
-										//set image data to global store and redirect to editor
-										const { base64data, imageName, resolution } = await getImgDataFromUrl(imgpath);
-										uploadedImgBase64.set(base64data);
-										uploadedImgFileName.set(imageName);
-										uploadedImgTargetRes.set(resolution);
-										goto(`${base}/editor`);
-									}}
-								>
-									<img
-										class="cursor-pointer object-cover object-center"
-										src={imgpath}
-										alt="example_image"
-									/>
-								</button>
-							{/each}
+							<!-- Button-Right -->
+							<button
+								type="button"
+								class="btn-icon btn-icon-sm variant-filled"
+								on:click={multiColumnRight}
+							>
+								<ArrowRight size={20} />
+							</button>
 						</div>
-						<!-- Button-Right -->
-						<button
-							type="button"
-							class="btn-icon btn-icon-sm variant-filled"
-							on:click={multiColumnRight}
-						>
-							<ArrowRight size={20} />
-						</button>
 					</div>
 				</div>
 			</div>

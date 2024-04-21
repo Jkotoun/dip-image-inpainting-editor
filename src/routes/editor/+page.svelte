@@ -197,9 +197,6 @@
 			goto(base == '' ? '/' : base);
 			return;
 		}
-		console.log($uploadedImgBase64)
-		console.log($uploadedImgFileName)
-		console.log($uploadedImgTargetRes)
 		//init editor and control elements state
 		gCurrentEditorState = await initEditorState($uploadedImgBase64, $uploadedImgFileName, $uploadedImgTargetRes);
 		gPanzoomObj = Panzoom(gCanvasesContainer, {
