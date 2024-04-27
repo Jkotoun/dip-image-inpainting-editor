@@ -1,4 +1,4 @@
-# Interactive Object Remover
+# Smart Object Remover
 Available at: https://jkotoun.github.io/dip-image-inpainting-editor/
 ## Install dependencies:
 **pnpm install**
