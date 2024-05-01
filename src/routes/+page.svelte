@@ -270,7 +270,7 @@
 							>
 								{#each exampleImages as imgpath}
 									<button
-										class="shrink-0 md:w-[28%] w-[50%] max-h-[125px] snap-start"
+										class="shrink-0 md:w-[28%] w-[50%] snap-start"
 										type="button"
 										on:click={async (e) => {
 											//set image data to global store and redirect to editor
