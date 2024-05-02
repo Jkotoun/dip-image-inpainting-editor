@@ -251,7 +251,7 @@
 				gImageCanvas.width = gMaskCanvas.width = targetRes.width;
 				gImageCanvas.height = gMaskCanvas.height = targetRes.height;
 				//portrait mode
-				if(targetRes.height* 1.5 > targetRes.width){
+				if(targetRes.height* 1.6 > targetRes.width){
 					gImageCanvas.style.maxHeight = gMaskCanvas.style.maxHeight = gOriginalImgElement.style.maxHeight =  '70vh';
 					gImageCanvas.style.width = gMaskCanvas.style.width = gOriginalImgElement.style.width = 'auto';
 				}

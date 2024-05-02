@@ -105,7 +105,6 @@ export function downloadImage(imageData: ImageData, imgName: string) {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
     }, 'image/png');
-    console.log("end download action")
 }
 
 export function clearCanvas(canvas: HTMLCanvasElement) {

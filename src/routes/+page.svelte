@@ -85,9 +85,7 @@
 		`${base}/example_photos/20230808_181343.jpg`,
 		`${base}/example_photos/example_sunset2.jpg`
 	];
-	// `${base}/example_photos/free-photo-of-ryma-studeny-snih-drevo.jpeg`,
-	// `${base}/example_photos/mountain-5649827_1280.jpg`,
-	// `${base}/example_photos/1920resized_street.jpg`
+
 
 	//image resolution from its url
 	async function getImageResolution(url: string): Promise<{ width: number; height: number }> {

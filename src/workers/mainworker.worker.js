@@ -32,7 +32,7 @@ function init(env, appBasePath) {
         mobileSamDecoderONNX = appBasePath + mobileSamDecoderONNX;
         MiganONNX = appBasePath + MiganONNX;
     }
-    import("https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/esm/ort.webgpu.min.js")
+    import("https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.3/dist/esm/ort.webgpu.min.js")
         .then(module => {
             ort = module.default;
             ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
@@ -52,7 +52,6 @@ async function loadEncoderDecoder() {
     try {
         encoderOnnxSession = await ort.InferenceSession.create(mobileSamEncoderONNX, {
             executionProviders: isMobile ? ['wasm'] : ['webgpu'],
-            graphOptimizationLevel: 'all',
         });
     }
     catch (e) {
@@ -63,7 +62,6 @@ async function loadEncoderDecoder() {
     }
     decoderOnnxSession = await ort.InferenceSession.create(mobileSamDecoderONNX, {
         executionProviders: ['wasm'],
-        graphOptimizationLevel: 'all'
     });
     encoderReady = true;
     decoderReady = true;
@@ -75,13 +73,11 @@ async function loadInpainter() {
         try {
             miganOnnxSession = await ort.InferenceSession.create(MiganONNX, {
                 executionProviders: isMobile? ['wasm'] : ['webgpu'],
-                graphOptimizationLevel: 'disabled',
             });
         }
         catch (e) {
             miganOnnxSession = await ort.InferenceSession.create(MiganONNX, {
                 executionProviders: ['wasm'],
-                graphOptimizationLevel: 'all'
             });
         }
         inpainterReady = true;
