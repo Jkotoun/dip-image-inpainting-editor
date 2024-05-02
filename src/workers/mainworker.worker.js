@@ -173,7 +173,6 @@ async function runDecoderONNX(data) {
         point_coords: new ort.Tensor('float32', data.point_coords.data, data.point_coords.dims),
         point_labels: new ort.Tensor('float32', data.point_labels.data, data.point_labels.dims)
     }
-
     const output = await decoderOnnxSession?.run(inputDict);
     //dispose input tensors
     for (const key in inputDict) {

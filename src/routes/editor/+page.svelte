@@ -49,6 +49,7 @@
 	//element references/UI globals
 	let gImageCanvas: any;
 	let gCanvasesContainer: any;
+	let gZoomableContainer: any;
 	let gMaskCanvas: any;
 	let gOriginalImgElement: HTMLImageElement;
 	let gHeaderHeightPx = 0;
@@ -199,7 +200,7 @@
 		}
 		//init editor and control elements state
 		gCurrentEditorState = await initEditorState($uploadedImgBase64, $uploadedImgFileName, $uploadedImgTargetRes);
-		gPanzoomObj = Panzoom(gCanvasesContainer, {
+		gPanzoomObj = Panzoom(gZoomableContainer, {
 			disablePan: !gPanEnabled,
 			minScale: 1,
 			maxScale: 10,
@@ -207,8 +208,8 @@
 			cursor: 'default'
 		}) as PanzoomObject;
 		//add event listeners
-		gCanvasesContainer.parentElement!.addEventListener('wheel', gPanzoomObj.zoomWithWheel);
-		gCanvasesContainer.addEventListener('panzoomchange', (event: any) => {
+		gZoomableContainer.parentElement!.addEventListener('wheel', gPanzoomObj.zoomWithWheel);
+		gZoomableContainer.addEventListener('panzoomchange', (event: any) => {
 			gCurrentZoom = event.detail.scale;
 		});
 		//after all inits, check if models are loaded
@@ -620,6 +621,7 @@
 			</div>
 			<div class="canvases " bind:this={gCanvasesContainer}>
 				<div
+					bind:this={gZoomableContainer}
 					class="relative !h-full !w-full justify-center"
 					role="group"
 					style="cursor: {currentCanvasCursor(gPanEnabled, gSelectedTool)}"
