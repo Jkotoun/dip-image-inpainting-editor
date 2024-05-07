@@ -2,7 +2,11 @@
 
 type Point = { x: number; y: number };
 
-//dilate SAM model output mask by a specified number of pixels for better results of inpainting
+/**
+ * dilate SAM model output mask by a specified number of pixels for better results of inpainting
+ * @param dilationPixels number of pixels to dilate the mask by
+ * @param mask binary mask to dilate
+ */
 export async function dilateMaskByPixels(
     dilationPixels: number,
     mask: boolean[][]
@@ -67,7 +71,13 @@ export async function dilateMaskByPixels(
     return dilatedMask;
 }
 
-//convert img data from mask canvas to binary mask
+/**
+ * Convert img data from canvas to binary mask array, which contains true if the pixel is drawn to
+ * @param imageData canvas image data
+ * @param canvasWidth source canvas width
+ * @param canvasHeight source canvas height
+ * @returns boolean mask array containting true if the pixel is drawn to
+ */
 export function maskArrayFromImgData(imageData: ImageData, canvasWidth: number, canvasHeight: number): boolean[][] {
     const maskArray: boolean[][] = [];
     for (let y = 0; y < canvasHeight; y++) {
@@ -82,7 +92,11 @@ export function maskArrayFromImgData(imageData: ImageData, canvasWidth: number, 
     return maskArray;
 }
 
-//download canvas data as png
+/**
+ * Download canvas data as png
+ * @param imageData canvas image data
+ * @param imgName target image name
+ */
 export function downloadImage(imageData: ImageData, imgName: string) {
     console.log("start download action")
     // Create a temporary canvas element
@@ -107,6 +121,10 @@ export function downloadImage(imageData: ImageData, imgName: string) {
     }, 'image/png');
 }
 
+/**
+ * Clear canvas element
+ * @param canvas canvas element to clear
+ */
 export function clearCanvas(canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');
     if (ctx) {

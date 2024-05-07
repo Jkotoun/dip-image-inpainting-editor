@@ -6,8 +6,8 @@ To remove an object:
 - Remove selected area from the image by clicking the *Remove* button - MI-GAN model fills the removed area
 Available at: https://jkotoun.github.io/dip-image-inpainting-editor/
 ## Install dependencies:
-**pnpm install**
+**npm install**
 ## Run in dev environment:
-**pnpm run dev**
+**npm run dev**
 ## Or build and run production version:
-**pnpm run build** && **pnpm run preview**
+**npm run build** && **npm run preview**

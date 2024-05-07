@@ -3,7 +3,12 @@ export interface imgRGBData {
 	width: number;
 	height: number;
 }
-//SAM encoder preprocessing - resize image, default longside 1024 
+/**
+ * SAM encoder preprocessing - resize image, default longside 1024 
+ * @param img imagedata to resize
+ * @param longSideLength target long side length
+ * @returns resized img data
+ */
 export async function getResizedImgData(
 	img: ImageData,
 	longSideLength: number = 1024
@@ -30,7 +35,11 @@ export async function getResizedImgData(
 	return rgbArray;
 }
 
-//convert ImageData from canvas to rgb 1D array - preprocessing for SAM encoder and inpainter
+/**
+ * convert ImageData from canvas to rgb 1D array - preprocessing for SAM encoder and inpainter
+ * @param imgData source canvas image data
+ * @returns width, height and rgb array
+ */
 export function imgDataToRGBArray(imgData: ImageData): imgRGBData {
 	let pixels = imgData?.data;
 	//create rgb array
@@ -43,7 +52,15 @@ export function imgDataToRGBArray(imgData: ImageData): imgRGBData {
 	return { rgbArray, width: imgData.width, height: imgData.height } as imgRGBData;
 }
 
-//RGB buffer to buffer in NCHW order - inpainter preprocessing 
+/**
+ * RGB buffer to UINT8 buffer in NCHW order - inpainter preprocessing 
+ * @param rgbBuffer rgb data unit8 buffer
+ * @param batchSize batch size of source data
+ * @param numChannels number of channels in source data - for rgb 3
+ * @param imageWidth width of image
+ * @param imageHeight height of image
+ * @returns NCHW unit8 buffer
+ */
 export function reshapeBufferToNCHW(
 	rgbBuffer: Uint8Array,
 	batchSize = 1,
@@ -65,7 +82,11 @@ export function reshapeBufferToNCHW(
 	return nchwBuffer;
 }
 
-//convert boolean mask combined from brush and SAM decoder to uint8 buffer - inpainter preprocessing
+/**
+ * convert boolean mask combined from brush and SAM decoder to uint8 buffer - inpainter preprocessing
+ * @param maskArray boolean maskArray containing true where the pixel is drawn to
+ * @returns uint8 buffer containing 0 for drawn pixel and 255 for not drawn pixel
+ */
 export function booleanMaskToUint8Buffer(maskArray: boolean[][]) {
 	const height = maskArray.length;
 	const width = maskArray[0].length;
@@ -82,7 +103,14 @@ export function booleanMaskToUint8Buffer(maskArray: boolean[][]) {
 	return uint8Buffer;
 }
 
-//reshape channels-width-height buffer to height-width-channels buffer
+/**
+ * reshape channels-width-height buffer to height-width-channels buffer
+ * @param chwBuffer uint8 buffer in CHW order
+ * @param width width parameter of source buffer
+ * @param height height parameter of source buffer
+ * @param channels channels in source buffer
+ * @returns HWC ordered uint8 buffer
+ */
 export function reshapeCHWtoHWC(
 	chwBuffer: Uint8Array,
 	width: number,

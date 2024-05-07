@@ -27,7 +27,14 @@ export function drawImage(canvas: HTMLCanvasElement, imageData: ImageData) {
     canvas.getContext('2d')!.putImageData(imageData, 0, 0);
 }
 
-//renders editor state - draw image, mask from both brush and SAM and markers on clicked positions
+/**
+ * renders editor state - draw image, mask from both brush and SAM and markers on clicked positions
+ * @param state state to render
+ * @param imageCanvas reference to canvas for image rendering
+ * @param maskCanvas reference to canvas for mask rendering
+ * @param ImgResToCanvasSizeRatio ratio of image resolution to canvas element size
+ * @returns editor state rendering promise
+ */
 export async function renderEditorState(
     state: editorState,
     imageCanvas: HTMLCanvasElement,
@@ -44,7 +51,12 @@ export async function renderEditorState(
         resolve();
     })
 }
-//draw smart selector tool markers on clicked positions 
+/**
+ * draw smart selector tool markers on clicked positions 
+ * @param canvas canvas to draw marks to
+ * @param ImgResToCanvasSizeRatio ratio of image resolution to canvas element size
+ * @param clickedPositions positions in image coordinates to draw to canvas
+ */
 function drawMarkers(canvas: HTMLCanvasElement, ImgResToCanvasSizeRatio: number, clickedPositions: SAMmarker[]) {
     const canvasContext = canvas.getContext('2d');
     if (!canvasContext) return;
@@ -56,7 +68,13 @@ function drawMarkers(canvas: HTMLCanvasElement, ImgResToCanvasSizeRatio: number,
     }
 }
 
-//draw mask on canvas from 2D binary mask array
+/**
+ * draw mask on canvas from 2D binary mask array
+ * @param canvas canvas to draw mask to
+ * @param maskArray mask array to draw
+ * @param opacity opacity of mask in canvas
+ * @param clearCanvasFirst whether to clear canvas before drawing mask
+ */
 export function drawMask(
     canvas: HTMLCanvasElement,
     maskArray: boolean[][],
@@ -83,7 +101,13 @@ export function drawMask(
     }
 }
 
-//MI-GAN inpainter postprocessing -  convert CHW output to canvas imageData to display result
+/**
+ * MI-GAN inpainter postprocessing - convert CHW output to canvas imageData to display result
+ * @param imageDataRGB source rgb (chw) uint8 array
+ * @param img_height source image height
+ * @param img_width source image width
+ * @returns ImageData object to display on canvas
+ */
 export async function RGB_CHW_array_to_imageData(
     imageDataRGB: Uint8Array,
     img_height: number,
@@ -102,7 +126,16 @@ export async function RGB_CHW_array_to_imageData(
     return new ImageData(imgDataBuffer, img_width, img_height);
 }
 
-//draw path from last to current position on canvas
+/**
+ * draw path from last to current position on canvas
+ * @param x current X position
+ * @param y current Y position
+ * @param prevX previous X position
+ * @param prevY previous Y position
+ * @param brushSize brush size in pixels 
+ * @param canvasContext canvas 2d context 
+ * @param ImgResToCanvasSizeRatio ratio of image resolution to canvas element size used to scale the brush size 
+ */
 export function canvasBrushDraw(
     x: number,
     y: number,
@@ -135,7 +168,11 @@ export function canvasBrushDraw(
     return { currentX: x, currentY: y };
 }
 
-//create mask and image buffer from current editor state and send message to webworker
+/**
+ * create mask and image buffer from current editor state and send message to webworker
+ * @param currentEditorState current editor state
+ * @param worker webworker object to send message to
+ */
 export async function runInpainting(currentEditorState: editorState, worker: Worker): Promise<void> {
     let imageNCHWBuffer = reshapeBufferToNCHW(
         imgDataToRGBArray(currentEditorState.imgData).rgbArray,
@@ -166,12 +203,23 @@ export async function runInpainting(currentEditorState: editorState, worker: Wor
     });
 }
 
-
+/**
+ * create empty mask array filled with false value with given width and height
+ * @param width width of mask
+ * @param height height of mask
+ * @returns empty mask array
+ */
 export function createEmptyMaskArray(width: number, height: number) {
     return new Array(height).fill(false).map(() => new Array(width).fill(false));
 }
 
-//create decoder input from current editor state (uploaded img + clicked positive/negative points)
+/**
+ * create decoder input from current editor state (uploaded img + clicked positive/negative points)
+ * @param currentEditorState current state of editor
+ * @param resizedImgWidth width of image after resizing to long length 1024
+ * @param resizedImgHeight height of image after resizing to long length 1024
+ * @returns input dictionary for decoder model
+ */
 export async function createDecoderInputDict(currentEditorState: editorState, resizedImgWidth: number, resizedImgHeight: number) {
 
     function coordsToResizedImgScale(x: number, y: number) {
@@ -223,7 +271,11 @@ export async function createDecoderInputDict(currentEditorState: editorState, re
 }
 
 
-//convert rgb array to float buffer and send message to webworker
+/**
+ * convert rgb array to float buffer and send message to webworker
+ * @param resizedImgData rgb array buffer of resized image data
+ * @param worker webworker object to send message to
+ */
 export async function runModelEncoder(resizedImgData: imgRGBData, worker: Worker): Promise<void> {
     let floatArray = Float32Array.from(resizedImgData.rgbArray);
     worker.postMessage({
@@ -235,7 +287,12 @@ export async function runModelEncoder(resizedImgData: imgRGBData, worker: Worker
     });
 }
 
-//get current cursor when hovered over canvas based on current state
+/**
+ * get current cursor when hovered over canvas based on current state
+ * @param enablePan whether pan is enabled
+ * @param selectedTool currently selected tool
+ * @returns cursor to display on canvas
+ */
 export const currentCanvasCursor = (enablePan: boolean, selectedTool: tool) => {
     if (enablePan === true) {
         return 'move';
@@ -247,7 +304,12 @@ export const currentCanvasCursor = (enablePan: boolean, selectedTool: tool) => {
         }
     }
 };
-//mask decoder result to 2D binary mask array - values >0 are considered as object pixels
+
+/**
+ * mask decoder result to 2D binary mask array - values >0 are considered as object pixels
+ * @param decoderResult result of decoder model
+ * @returns 2D binary mask array determining object pixels
+ */
 export const decoderResultToMaskArray = (decoderResult: number[][]) : boolean[][]=> {
     return decoderResult.map((val: number[]) => val.map((v) => v > 0.0));
 };
