@@ -52,7 +52,6 @@
 	let gZoomableContainer: any;
 	let gMaskCanvas: any;
 	let gOriginalImgElement: HTMLImageElement;
-	let gHeaderHeightPx = 0;
 	let gShowOriginalImage: boolean = false;
 	const drawerStore = getDrawerStore();
 
@@ -180,11 +179,6 @@
 
 	//init editor state on editor page load
 	onMount(async () => {
-		//for computing height limit of editor canvases
-		let header = document.querySelector('header');
-		if (header) {
-			gHeaderHeightPx = header.getBoundingClientRect().height;
-		}
 		//change ratio of canvas and real img res on win resize
 		window.addEventListener('resize', () => {
 			if (gImageCanvas) {
@@ -321,6 +315,7 @@
 		event.preventDefault();
 
 		gEditorStatesHistory = [...gEditorStatesHistory, gCurrentEditorState];
+		gEditorStatesUndoed = [];
 		gCurrentEditorState = {
 			maskBrush: gCurrentEditorState.maskBrush,
 			maskSAM: gCurrentEditorState.maskSAM,
@@ -474,6 +469,7 @@
 	//handle inpainted image data - set and render new editor state and run encoder on new image
 	async function setInpaintedImgEditorState(inpaintedImgData: ImageData) {
 		gEditorStatesHistory = [...gEditorStatesHistory, gCurrentEditorState];
+		gEditorStatesUndoed = [];
 		let newEditorState: editorState = {
 			maskBrush: createEmptyMaskArray(gImgDataOriginal.width, gImgDataOriginal.height),
 			maskSAM: createEmptyMaskArray(gImgDataOriginal.width, gImgDataOriginal.height),
