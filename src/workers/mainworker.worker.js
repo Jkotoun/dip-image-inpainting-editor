@@ -32,7 +32,7 @@ function init(env, appBasePath) {
         mobileSamDecoderONNX = appBasePath + mobileSamDecoderONNX;
         MiganONNX = appBasePath + MiganONNX;
     }
-    import("https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.3/dist/esm/ort.webgpu.min.js")
+    import("https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/esm/ort.webgpu.min.js")
         .then(module => {
             ort = module.default;
             ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
