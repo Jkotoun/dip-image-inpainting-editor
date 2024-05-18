@@ -370,7 +370,7 @@
 	}
 
 	//init painting globals, draw first brush stroke
-	function startPainting(event: MouseEvent | TouchEvent, canvas: HTMLCanvasElement) {
+	function startPainting(event: MouseEvent | TouchEvent, canvas: HTMLCanvasElement, currentCanvasZoom: number) {
 		gIsPainting = true;
 		if (event instanceof MouseEvent) {
 			gPrevMouseX = event.offsetX * gImgResToCanvasSizeRatio;
@@ -378,10 +378,10 @@
 		} else {
 			let touch = event.touches[0]; // Get the first touch, you might handle multi-touch differently
 			gPrevMouseX =
-				(touch.clientX - canvas.getBoundingClientRect().left) * gImgResToCanvasSizeRatio;
-			gPrevMouseY = (touch.clientY - canvas.getBoundingClientRect().top) * gImgResToCanvasSizeRatio;
+				((touch.clientX - canvas.getBoundingClientRect().left)/currentCanvasZoom) * gImgResToCanvasSizeRatio;
+			gPrevMouseY = ((touch.clientY - canvas.getBoundingClientRect().top)/currentCanvasZoom) * gImgResToCanvasSizeRatio;
 		}
-		handleEditorCursorMove(event, canvas);
+		handleEditorCursorMove(event, canvas, currentCanvasZoom);
 	}
 
 	//stop painting and save mask array to editor state
@@ -405,7 +405,7 @@
 	}
 
 	//draw brush stroke on canvas
-	function handleEditorCursorMove(event: MouseEvent | TouchEvent, canvas: HTMLCanvasElement) {
+	function handleEditorCursorMove(event: MouseEvent | TouchEvent, canvas: HTMLCanvasElement, currentCanvasZoom: number) {
 		let x: number, y: number;
 		if (event instanceof MouseEvent) {
 			x = event.offsetX * gImgResToCanvasSizeRatio;
@@ -416,8 +416,8 @@
 			let touch = event.touches[0]; // Get the first touch, you might handle multi-touch differently
 			let targetRect = canvas.getBoundingClientRect(); // Get the target element's position
 			// Calculate offsetX and offsetY
-			let offsetX = touch.clientX - targetRect.left;
-			let offsetY = touch.clientY - targetRect.top;
+			let offsetX = (touch.clientX - targetRect.left)/currentCanvasZoom;
+			let offsetY = (touch.clientY - targetRect.top)/currentCanvasZoom;
 			x = offsetX * gImgResToCanvasSizeRatio;
 			y = offsetY * gImgResToCanvasSizeRatio;
 			gBrushOffsetX = offsetX;
@@ -666,21 +666,21 @@
 						"
 						bind:this={gMaskCanvas}
 						on:mousedown={gSelectedTool === 'brush' && !gPanEnabled
-							? (e) => startPainting(e, gMaskCanvas)
+							? (e) => startPainting(e, gMaskCanvas, gCurrentZoom)
 							: undefined}
 						on:mouseup={gSelectedTool === 'brush' && !gPanEnabled ? stopPainting : undefined}
 						on:mousemove={(event) =>
 							gSelectedTool === 'brush' && !gPanEnabled
-								? handleEditorCursorMove(event, gMaskCanvas)
+								? handleEditorCursorMove(event, gMaskCanvas, gCurrentZoom)
 								: undefined}
 						on:touchstart={gSelectedTool === 'brush' && !gPanEnabled
-							? (e) => startPainting(e, gMaskCanvas)
+							? (e) => startPainting(e, gMaskCanvas,gCurrentZoom)
 							: undefined}
 						on:touchend={gSelectedTool === 'brush' && !gPanEnabled ? stopPainting : undefined}
 						on:touchmove={gSelectedTool === 'brush' && !gPanEnabled
 							? (e) => {
 									e.preventDefault();
-									handleEditorCursorMove(e, gMaskCanvas);
+									handleEditorCursorMove(e, gMaskCanvas, gCurrentZoom);
 							  }
 							: undefined}
 						on:click={gSelectedTool === 'segment_anything' && !gPanEnabled
