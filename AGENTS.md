@@ -15,7 +15,7 @@ Live demo: https://jkotoun.github.io/dip-image-inpainting-editor/
 ## Tech stack
 
 - **Framework:** SvelteKit 1.x, **Svelte 4** (stores with `$`, `export let`, `on:` — not Svelte 5 runes)
-- **Build:** Vite 4; `@sveltejs/adapter-static` (`fallback: index.html`) → static SPA
+- **Build:** Vite 4; `@sveltejs/adapter-static` (`fallback: 404.html`) → static SPA
 - **UI:** Skeleton 2 (`wintry` theme) + Tailwind CSS 3, `lucide-svelte` icons
 - **ML runtime:** ONNX Runtime Web `1.18.0`, loaded at runtime from the jsDelivr CDN (not an npm dep)
 - **Canvas:** `@panzoom/panzoom`; `svelte-compare-image` (homepage before/after)

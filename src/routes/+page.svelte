@@ -227,9 +227,9 @@
 			<div class="md:pt-16 pt-4 flex lg:flex-row flex-col gap-4">
 				<div class="flex-1">
 					<CompareImage
-						imageLeftSrc="{base}/before.png"
+						imageLeftSrc="{base}/before.webp"
 						imageLeftAlt="left"
-						imageRightSrc="{base}/after.png"
+						imageRightSrc="{base}/after.webp"
 						imageRightAlt="right"
 						--handle-size="1.625rem"
 					/>
